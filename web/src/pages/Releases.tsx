@@ -97,7 +97,10 @@ export default function Releases() {
             <option value="amd64">amd64</option>
             <option value="arm64">arm64</option>
           </select>
-          <input placeholder="Channel" value={channel} onChange={(e) => setChannel(e.target.value)} />
+          <select value={channel} onChange={(e) => setChannel(e.target.value)}>
+            <option value="stable">stable</option>
+            <option value="beta">beta</option>
+          </select>
           <input placeholder="Artifact URL" value={artifactURL} onChange={(e) => setArtifactURL(e.target.value)} required style={{ minWidth: 260 }} />
           <input placeholder="SHA-256 (hex)" value={sha256} onChange={(e) => setSha256(e.target.value)} required style={{ minWidth: 260 }} />
           <input placeholder="Signature (base64)" value={signature} onChange={(e) => setSignature(e.target.value)} required style={{ minWidth: 260 }} />

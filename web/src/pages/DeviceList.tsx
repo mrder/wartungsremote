@@ -15,6 +15,7 @@ export default function DeviceList() {
   const [enrollBusy, setEnrollBusy] = useState(false)
   const [revokeMsg, setRevokeMsg] = useState('')
   const [installOS, setInstallOS] = useState<'linux' | 'windows'>('linux')
+  const [installChannel, setInstallChannel] = useState<'stable' | 'beta'>('stable')
   const [copied, setCopied] = useState(false)
 
   async function load() {
@@ -48,23 +49,23 @@ export default function DeviceList() {
     }
   }
 
-  function installCommand(os: 'linux' | 'windows', token: string): string {
+  function installCommand(os: 'linux' | 'windows', channel: 'stable' | 'beta', token: string): string {
     const serverUrl = user?.public_base_url || window.location.origin
     const repo = 'mrder/wartungsremote'
     if (os === 'linux') {
-      return `curl -fsSL https://raw.githubusercontent.com/${repo}/main/scripts/quickinstall-agent-linux.sh | sudo bash -s -- --server-url ${serverUrl} --token ${token}`
+      return `curl -fsSL https://raw.githubusercontent.com/${repo}/main/scripts/quickinstall-agent-linux.sh | sudo bash -s -- --server-url ${serverUrl} --token ${token} --channel ${channel}`
     }
     return [
       `$s = New-TemporaryFile`,
       `Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/${repo}/main/scripts/quickinstall-agent-windows.ps1" -OutFile $s`,
-      `& $s -ServerUrl "${serverUrl}" -Token "${token}"`,
+      `& $s -ServerUrl "${serverUrl}" -Token "${token}" -Channel "${channel}"`,
     ].join('\n')
   }
 
   async function copyInstallCommand() {
     if (!enrollment) return
     try {
-      await navigator.clipboard.writeText(installCommand(installOS, enrollment.token))
+      await navigator.clipboard.writeText(installCommand(installOS, installChannel, enrollment.token))
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
@@ -131,9 +132,11 @@ export default function DeviceList() {
           <div className="toolbar" style={{ marginBottom: '0.5rem' }}>
             <button onClick={() => setInstallOS('linux')} disabled={installOS === 'linux'}>Linux</button>
             <button onClick={() => setInstallOS('windows')} disabled={installOS === 'windows'}>Windows</button>
+            <button onClick={() => setInstallChannel('stable')} disabled={installChannel === 'stable'}>Stable</button>
+            <button onClick={() => setInstallChannel('beta')} disabled={installChannel === 'beta'}>Beta</button>
             <button onClick={copyInstallCommand}>{copied ? 'Copied!' : 'Copy command'}</button>
           </div>
-          <code style={{ whiteSpace: 'pre-wrap', display: 'block' }}>{installCommand(installOS, enrollment.token)}</code>
+          <code style={{ whiteSpace: 'pre-wrap', display: 'block' }}>{installCommand(installOS, installChannel, enrollment.token)}</code>
           <p style={{ marginTop: '0.75rem' }}>
             Raw token, if you'd rather install manually: <code>{enrollment.token}</code>
           </p>

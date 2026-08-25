@@ -28,6 +28,7 @@ export default function DeviceDetail() {
   const [requesting, setRequesting] = useState(false)
   const [updateBusy, setUpdateBusy] = useState(false)
   const [updateMsg, setUpdateMsg] = useState('')
+  const [updateChannel, setUpdateChannel] = useState<'stable' | 'beta'>('stable')
 
   async function load() {
     if (!id) return
@@ -84,7 +85,7 @@ export default function DeviceDetail() {
     setUpdateBusy(true)
     setUpdateMsg('')
     try {
-      const res = await ReleaseApi.triggerUpdate(id)
+      const res = await ReleaseApi.triggerUpdate(id, updateChannel)
       setUpdateMsg(`Update to ${res.target_version} triggered.`)
     } catch (err) {
       setUpdateMsg(err instanceof ApiError ? err.message : 'Failed to trigger update')
@@ -140,9 +141,19 @@ export default function DeviceDetail() {
               <td>
                 {device.agent_version || '-'}
                 {canUpdate && device.status === 'online' && (
-                  <button onClick={triggerUpdate} disabled={updateBusy} style={{ marginLeft: '0.75rem' }}>
-                    {updateBusy ? 'Triggering...' : 'Check for update'}
-                  </button>
+                  <>
+                    <select
+                      value={updateChannel}
+                      onChange={(e) => setUpdateChannel(e.target.value as 'stable' | 'beta')}
+                      style={{ marginLeft: '0.75rem' }}
+                    >
+                      <option value="stable">stable</option>
+                      <option value="beta">beta</option>
+                    </select>
+                    <button onClick={triggerUpdate} disabled={updateBusy} style={{ marginLeft: '0.5rem' }}>
+                      {updateBusy ? 'Triggering...' : 'Check for update'}
+                    </button>
+                  </>
                 )}
                 {updateMsg && <span style={{ marginLeft: '0.5rem' }}>{updateMsg}</span>}
               </td>
