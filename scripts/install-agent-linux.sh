@@ -2,6 +2,16 @@
 # Installs wr-agent as a systemd service on Debian/Ubuntu/Raspberry Pi OS.
 # See docs/AGENT.md and docs/TODO.md Phase 26.
 #
+# Runs as root (deliberate choice, not the V1-documented unprivileged
+# default): remote support must be able to fully administer the device
+# without ever needing the customer's own login. This trades a larger
+# blast radius (a compromised wr-core server or a bug in the agent's own
+# command handling is immediately root on every enrolled device) for
+# operational simplicity. Mitigate at the network layer — the admin
+# dashboard must stay off the public internet (loopback/VPN-only, see
+# docs/DEPLOYMENT.md §2-3); only the agent-facing gateway is ever
+# internet-reachable.
+#
 # Usage:
 #   sudo ./install-agent-linux.sh --server-url https://remote.example.de --token wr_enroll_XXXXXXXX
 #
@@ -33,11 +43,9 @@ if [[ ! -f "$BINARY_SRC" ]]; then
   exit 1
 fi
 
-id -u wartungsremote >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin wartungsremote
-
-install -d -o wartungsremote -g wartungsremote -m 0750 /etc/wartungsremote
-install -d -o wartungsremote -g wartungsremote -m 0750 /var/lib/wartungsremote
-install -d -o wartungsremote -g wartungsremote -m 0750 /var/log/wartungsremote
+install -d -o root -g root -m 0700 /etc/wartungsremote
+install -d -o root -g root -m 0700 /var/lib/wartungsremote
+install -d -o root -g root -m 0750 /var/log/wartungsremote
 
 install -o root -g root -m 0755 "$BINARY_SRC" /usr/local/bin/wr-agent
 
@@ -56,13 +64,13 @@ policy:
   process_terminate: true
   power_control: true
 EOF
-  chown wartungsremote:wartungsremote /etc/wartungsremote/agent.yaml
-  chmod 0640 /etc/wartungsremote/agent.yaml
+  chown root:root /etc/wartungsremote/agent.yaml
+  chmod 0600 /etc/wartungsremote/agent.yaml
 fi
 
 if [[ -n "$TOKEN" ]]; then
   echo -n "$TOKEN" > /var/lib/wartungsremote/enroll.token
-  chown wartungsremote:wartungsremote /var/lib/wartungsremote/enroll.token
+  chown root:root /var/lib/wartungsremote/enroll.token
   chmod 0600 /var/lib/wartungsremote/enroll.token
 fi
 

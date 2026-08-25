@@ -1,6 +1,6 @@
 [Unit]
 Description=WartungsRemote Agent
-Documentation=https://github.com/<org>/wartungsremote
+Documentation=https://github.com/mrder/wartungsremote
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=0
@@ -10,19 +10,18 @@ Type=simple
 ExecStart=/usr/local/bin/wr-agent --config /etc/wartungsremote/agent.yaml
 Restart=always
 RestartSec=5
-User=wartungsremote
-Group=wartungsremote
 
-# V1 only implements metrics/inventory/heartbeat, none of which need root,
-# so the agent runs as an unprivileged dedicated service account (least
-# privilege, docs/SECURITY.md §18). Terminal/services/processes/power in
-# later phases will need to revisit this — either targeted capabilities or
-# the documented "unprivileged agent + small privileged helper" split.
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
+# Deliberately runs as root (not the least-privilege default this project
+# otherwise documents) so remote support can fully administer the device
+# — Terminal/services/processes/files — without ever needing the
+# customer's own login. This is a real, accepted tradeoff: a compromised
+# wr-core server, or a bug in the agent's own command handling, is
+# immediately root on every enrolled device. The mitigation lives at the
+# network layer, not here — the admin dashboard (where a human logs in)
+# must never be reachable from the public internet, only the
+# agent-facing gateway is (docs/DEPLOYMENT.md §2-3, enforced by
+# admin.listen defaulting to 127.0.0.1).
 
-ReadWritePaths=/var/lib/wartungsremote /var/log/wartungsremote
 ConfigurationDirectory=wartungsremote
 StateDirectory=wartungsremote
 LogsDirectory=wartungsremote

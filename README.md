@@ -224,6 +224,21 @@ go test ./tests/... -v
 Read `docs/SECURITY.md` before changing anything security-relevant. Report
 vulnerabilities per the top-level [`SECURITY.md`](SECURITY.md).
 
+**Deliberate deviation from the V1 least-privilege default:** the Linux
+agent (`scripts/install-agent-linux.sh`,
+`deployment/systemd/wartungsremote-agent.service`) runs as **root**, not
+the unprivileged dedicated service account `docs/SECURITY.md` §18
+otherwise describes. This is an intentional tradeoff, not an oversight —
+it lets remote support fully administer a device without ever needing
+the customer's own credentials. It also means a compromised wr-core
+server, or a bug in the agent's own command handling, is immediately
+root on every enrolled Linux device. The required mitigation: the admin
+dashboard (`admin.listen`) must never be reachable from the public
+internet — only the agent-facing gateway (`public.listen`) is, and it
+never exposes a login. See `docs/DEPLOYMENT.md` §2-3. The Windows agent
+reaches the same capability level via the Windows Service running as
+LocalSystem — no separate decision needed there.
+
 ## License
 
 License model to be finalized (`docs/TODO.md` Phase 0).

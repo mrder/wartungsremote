@@ -5,6 +5,33 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Security-relevant decision: Linux agent now runs as root
+
+- Changed `scripts/install-agent-linux.sh` and
+  `deployment/systemd/wartungsremote-agent.service` from the
+  V1-documented unprivileged dedicated service account
+  (`User=wartungsremote`, `NoNewPrivileges`, `ProtectSystem=strict`,
+  `ProtectHome`) to running as **root**. Deliberate product decision, not
+  a bug: without it, Terminal/Services/Processes/Files on Linux only ever
+  had the unprivileged account's rights, so genuine remote admin support
+  would have needed the customer's own sudo password — defeating the
+  point. Windows already reached full capability via the Windows Service
+  running as LocalSystem; this makes Linux match.
+- Accepted tradeoff, discussed explicitly before changing: a compromised
+  wr-core server, or a bug in the agent's own command handling, is now
+  immediately root on every enrolled Linux device — considered and
+  rejected the smaller-blast-radius alternative (a sudoers policy scoped
+  to only the actions actually needed). The required compensating
+  control is network isolation of the admin dashboard, which already
+  existed by default (`admin.listen: 127.0.0.1:9443`,
+  `docker-compose.yml` publishing 9443 on loopback only) — only the
+  agent-facing gateway is ever internet-reachable, and it has no login to
+  attack. See README.md "Security" and `docs/DEPLOYMENT.md` §2-3.
+- The temporary "request admin rights" UI/audit flow (`docs/SPECIFICATION.md`
+  §14) still only does audit bookkeeping — it does not (and, with the
+  agent already running as root, no longer needs to) actually vary the
+  OS-level privilege of an open session.
+
 ### Published
 
 - Initial public repository: https://github.com/mrder/wartungsremote.
