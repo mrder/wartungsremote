@@ -5,6 +5,16 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Published
+
+- Initial public repository: https://github.com/mrder/wartungsremote.
+  First signed release `v0.1.1` (Windows amd64, Linux amd64/arm64),
+  signed offline with `cmd/wr-release-sign` and registered in the agent
+  manifest with real `github.com/.../releases/download/...` artifact
+  URLs. End-to-end self-update verified against this real release: the
+  live agent downloaded, verified, staged, and swapped itself from
+  `0.1.0-dev` to `0.1.1`, byte-identical to the uploaded asset.
+
 ### Fixed/added during first real-machine user testing
 
 - Removed the file **Delete** action from the web Files tab (backend
