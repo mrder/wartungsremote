@@ -14,6 +14,8 @@ export default function DeviceList() {
   const [enrollment, setEnrollment] = useState<{ token: string; expires_at: string } | null>(null)
   const [enrollBusy, setEnrollBusy] = useState(false)
   const [revokeMsg, setRevokeMsg] = useState('')
+  const [installOS, setInstallOS] = useState<'linux' | 'windows'>('linux')
+  const [copied, setCopied] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -43,6 +45,30 @@ export default function DeviceList() {
       setError(err instanceof ApiError ? err.message : 'Failed to create enrollment token')
     } finally {
       setEnrollBusy(false)
+    }
+  }
+
+  function installCommand(os: 'linux' | 'windows', token: string): string {
+    const serverUrl = user?.public_base_url || window.location.origin
+    const repo = 'mrder/wartungsremote'
+    if (os === 'linux') {
+      return `curl -fsSL https://raw.githubusercontent.com/${repo}/main/scripts/quickinstall-agent-linux.sh | sudo bash -s -- --server-url ${serverUrl} --token ${token}`
+    }
+    return [
+      `$s = New-TemporaryFile`,
+      `Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/${repo}/main/scripts/quickinstall-agent-windows.ps1" -OutFile $s`,
+      `& $s -ServerUrl "${serverUrl}" -Token "${token}"`,
+    ].join('\n')
+  }
+
+  async function copyInstallCommand() {
+    if (!enrollment) return
+    try {
+      await navigator.clipboard.writeText(installCommand(installOS, enrollment.token))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // clipboard API unavailable (e.g. non-HTTPS context) — command is still visible to copy manually
     }
   }
 
@@ -98,9 +124,19 @@ export default function DeviceList() {
 
       {enrollment && (
         <div className="enrollment-panel">
-          <p>New enrollment token (shown once, expires {new Date(enrollment.expires_at).toLocaleString()}):</p>
-          <code>{enrollment.token}</code>
-          <p>Install the agent on the target device and provide this token as its one-time enrollment token (see docs/AGENT.md).</p>
+          <p>
+            New enrollment token — shown once, expires {new Date(enrollment.expires_at).toLocaleString()}. Run this
+            on the target device (as Administrator/root) to install and enroll it in one step:
+          </p>
+          <div className="toolbar" style={{ marginBottom: '0.5rem' }}>
+            <button onClick={() => setInstallOS('linux')} disabled={installOS === 'linux'}>Linux</button>
+            <button onClick={() => setInstallOS('windows')} disabled={installOS === 'windows'}>Windows</button>
+            <button onClick={copyInstallCommand}>{copied ? 'Copied!' : 'Copy command'}</button>
+          </div>
+          <code style={{ whiteSpace: 'pre-wrap', display: 'block' }}>{installCommand(installOS, enrollment.token)}</code>
+          <p style={{ marginTop: '0.75rem' }}>
+            Raw token, if you'd rather install manually: <code>{enrollment.token}</code>
+          </p>
           <button onClick={() => setEnrollment(null)}>Close</button>
         </div>
       )}

@@ -80,6 +80,41 @@ docs/                normative specification (read this first)
 - Node.js + npm (for `web/`)
 - PostgreSQL 16+ (local install, or via Docker Compose)
 
+## Installation order: the server always comes first
+
+The **server (wr-core)** is the only thing you build/deploy up front. It's
+what issues the one-time enrollment tokens and per-device install commands
+that every **client (wr-agent)** needs — there is no way to install a
+client before a server exists to enroll it against. Concretely:
+
+1. Stand up wr-core (see "Quick start" below for a dev instance, or
+   "Docker Compose deployment" / "Building and installing the server" for
+   something longer-lived), reachable from the machines you want to
+   support.
+2. Log into its dashboard and set the account up (TOTP, etc.).
+3. Click **"+ Add Device"**. The panel generates a ready-to-paste
+   one-line install command — with your server's address and a fresh,
+   single-use token already filled in — for both Linux and Windows,
+   using the latest signed release from
+   [GitHub Releases](https://github.com/mrder/wartungsremote/releases)
+   (`agent-*` tags). No manual download/build step needed:
+
+   ```bash
+   # Linux — generated for you, shown once
+   curl -fsSL https://raw.githubusercontent.com/mrder/wartungsremote/main/scripts/quickinstall-agent-linux.sh \
+     | sudo bash -s -- --server-url https://remote.example.de --token wr_enroll_XXXX
+   ```
+
+4. Paste that one line into an SSH/PowerShell session on the target
+   device. It downloads the correct signed binary for that OS/arch,
+   verifies it, and installs it as a system service — done.
+
+Each token is single-use and time-limited (docs/AGENT.md §5); generate a
+new one per device from "+ Add Device". Building the client from source
+instead of using a signed release is also supported — see "Building and
+installing the agent" below — but the release + generated command is the
+path meant for actually rolling this out, not just for local development.
+
 ## Quick start (local development)
 
 1. **Database.** Point `WR_DATABASE_URL_DEV` at a throwaway Postgres
