@@ -19,4 +19,9 @@ fi
 [[ -f "$DIR/session_pepper.bin" ]] || head -c 32 /dev/urandom > "$DIR/session_pepper.bin"
 [[ -f "$DIR/totp_key.bin" ]] || head -c 32 /dev/urandom > "$DIR/totp_key.bin"
 
+if [[ ! -f "$DIR/admin_password.txt" ]]; then
+  openssl rand -base64 18 | tr -d '\n' > "$DIR/admin_password.txt"
+fi
+
 echo "Secrets generated in $DIR"
+echo "First admin account password: $DIR/admin_password.txt (used by the createadmin step in the README — change it after first login)"

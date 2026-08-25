@@ -79,6 +79,11 @@ services:
       - session_pepper
       - totp_key
       - release_public_key
+      # Not used by the running server — only present so `docker compose
+      # run --rm wr-core createadmin --username admin --password-file
+      # /run/secrets/admin_password` (see README) has the generated
+      # password file available for that one-off command.
+      - admin_password
     volumes:
       - ./server.yaml:/app/config/server.yaml:ro
     ports:
@@ -89,9 +94,30 @@ services:
       # off externally per docs/DEPLOYMENT.md §3 and let Caddy be the only
       # public entry point.
       - "8443:8443"
-      # Admin web: intentionally bound to loopback only. Reach it via SSH
-      # tunnel or your management VPN, never expose this port publicly.
+      # Admin API: loopback only. wr-web (below) reaches it over the
+      # internal Docker network instead of this mapping; this one is just
+      # for direct API/curl access from the host itself if you need it.
+      # Never expose this port publicly.
       - "127.0.0.1:9443:9443"
+
+  wr-web:
+    build:
+      context: ../../web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks: [internal]
+    depends_on: [wr-core]
+    volumes:
+      - ./Caddyfile.web:/etc/caddy/Caddyfile:ro
+    ports:
+      # The dashboard itself: bound to the host's loopback only. Reach it
+      # via SSH tunnel (`ssh -L 9080:127.0.0.1:9080 you@server`, then open
+      # http://127.0.0.1:9080) or your management VPN — never publish this
+      # port. Must be opened as 127.0.0.1/localhost specifically (not the
+      # server's LAN/public IP) for the __Host- session cookie to work
+      # without TLS — browsers treat the loopback address itself as a
+      # secure context, but no other plain-HTTP origin.
+      - "127.0.0.1:9080:80"
 
 secrets:
   db_password:
@@ -109,3 +135,5 @@ secrets:
   # keys/README.md.
   release_public_key:
     file: ../../keys/release.pub
+  admin_password:
+    file: ./secrets/admin_password.txt

@@ -13,7 +13,18 @@ public:
   listen: 0.0.0.0:8443
 
 admin:
-  listen: 127.0.0.1:9443
+  # 0.0.0.0, not 127.0.0.1, is correct here specifically because this runs
+  # inside a container: a process bound to 127.0.0.1 only accepts
+  # connections arriving via the container's OWN loopback, which neither
+  # Docker's published-port forwarding nor another container's reverse
+  # proxy (wr-web) can ever reach — the connection would just be refused,
+  # nothing would work. The actual "admin is never public" boundary here
+  # is enforced by docker-compose.yml instead: wr-core sits only on the
+  # `internal` (non-internet-routable) network, and wr-web's own published
+  # port is itself bound to the HOST's 127.0.0.1. A native, non-Docker
+  # install (docs/DEPLOYMENT.md "native") should keep the literal
+  # 127.0.0.1 default from internal/config's ServerConfig.Default().
+  listen: 0.0.0.0:9443
   session_absolute_ttl: 8h
   session_idle_ttl: 30m
   privilege_ttl: 15m

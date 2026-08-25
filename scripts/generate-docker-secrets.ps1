@@ -28,4 +28,12 @@ if (-not (Test-Path $databaseUrlPath)) {
 New-RandomBytesFile (Join-Path $dir "session_pepper.bin") 32
 New-RandomBytesFile (Join-Path $dir "totp_key.bin") 32
 
+$adminPasswordPath = Join-Path $dir "admin_password.txt"
+if (-not (Test-Path $adminPasswordPath)) {
+    $buf = New-Object byte[] 18
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($buf)
+    [Convert]::ToBase64String($buf) | Set-Content -Path $adminPasswordPath -NoNewline -Encoding ascii
+}
+
 Write-Host "Secrets generated in $dir"
+Write-Host "First admin account password: $adminPasswordPath (used by the createadmin step in the README - change it after first login)"

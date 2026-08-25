@@ -251,9 +251,28 @@ cp server.example.yaml server.yaml
 docker compose up -d
 ```
 
-The admin web port is bound to `127.0.0.1` only by design — reach it via SSH
-tunnel or your management VPN, never expose it publicly (`docs/DEPLOYMENT.md`
-§2-3, §10). Only the agent gateway is fronted by Caddy on 443.
+Create the first super_admin (reads the password generated above, one-off,
+non-interactive — the same rule as native installs, no open registration):
+
+```bash
+docker compose run --rm wr-core createadmin --username admin --password-file /run/secrets/admin_password
+cat secrets/admin_password.txt   # the password to log in with — change it after first login
+```
+
+The dashboard (`wr-web`) and the admin API port are both bound to the
+host's `127.0.0.1` only by design — reach them via SSH tunnel or your
+management VPN, never expose either publicly (`docs/DEPLOYMENT.md` §2-3,
+§10):
+
+```bash
+ssh -L 9080:127.0.0.1:9080 you@your-server
+# then open http://127.0.0.1:9080 in your local browser (must be opened as
+# 127.0.0.1/localhost specifically, not the server's LAN/public IP, for
+# the session cookie to work without TLS on this loopback-only hop)
+```
+
+Only the agent gateway is fronted by Caddy on 443 — that's the one thing
+meant to be reachable from the internet.
 
 ## Tests
 

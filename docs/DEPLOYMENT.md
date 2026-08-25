@@ -33,6 +33,18 @@ remote.example.de       -> öffentlicher Agent Gateway 443
 remote-admin.internal   -> Admin Web intern/VPN
 ```
 
+Referenzimplementierung: der `wr-web`-Service in
+`deployment/docker/docker-compose.yml` baut das Dashboard (`web/`) und
+serviert es statisch, inklusive `/api`-Reverse-Proxy zu `wr-core` — beides
+nur auf `127.0.0.1` des Hosts gebunden, per SSH-Tunnel/VPN erreichbar
+(README → "Docker Compose deployment"). Wichtig: `wr-core`s
+`admin.listen` steht im Docker-Setup bewusst auf `0.0.0.0` statt
+`127.0.0.1` — die eigentliche Absicherung kommt dort aus dem internen,
+nicht-öffentlichen Docker-Netz plus dem loopback-gebundenen
+Host-Port-Mapping, nicht aus der Bind-Adresse selbst (ein auf `127.0.0.1`
+gebundener Prozess *innerhalb* eines Containers wäre weder von anderen
+Containern noch über published Ports überhaupt erreichbar).
+
 ## 3. Firewall
 
 Öffentlich:

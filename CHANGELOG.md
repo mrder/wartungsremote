@@ -5,6 +5,35 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Docker Compose: the dashboard itself was never actually servable
+
+- `docs/DEPLOYMENT.md`'s own recommended layout lists a `wr-web`
+  component, but `docker-compose.yml` never had one — wr-core is a pure
+  JSON API with no static-file serving of its own, so after `docker
+  compose up` there was genuinely no way to open the admin dashboard
+  against a Dockerized server at all.
+- Added a `wr-web` service: a small multi-stage build (`web/Dockerfile`)
+  that builds the React app and serves it via Caddy
+  (`deployment/docker/Caddyfile.web`), proxying `/api/*` to `wr-core` on
+  the internal Docker network. Bound to the host's `127.0.0.1` only, same
+  "SSH tunnel or VPN, never public" rule as everything admin-facing.
+- Found and fixed a real bug surfaced while wiring this up:
+  `server.example.yaml` had `admin.listen: 127.0.0.1`, which — inside a
+  container — binds the container's own loopback, unreachable by any
+  other container (including the new wr-web) or by Docker's own
+  published-port forwarding. Changed to `0.0.0.0` for the Docker
+  reference config specifically, with the actual "never public" boundary
+  now correctly enforced by the internal Docker network plus the
+  loopback-bound host port mapping instead of the bind address. The
+  native (non-Docker) `ServerConfig.Default()` keeps the literal
+  `127.0.0.1` default, which is correct there.
+- The Docker Compose path also had no documented way to create the first
+  admin account at all. `generate-docker-secrets.sh`/`.ps1` now also
+  generate an `admin_password.txt`, wired as a compose secret purely so
+  `docker compose run --rm wr-core createadmin --username admin
+  --password-file /run/secrets/admin_password` (now documented in the
+  README) has something to read.
+
 ### Docker Compose reference deployment: TLS/domain was actually missing
 
 - Found while preparing the Docker+GitHub deployment path: the shipped
