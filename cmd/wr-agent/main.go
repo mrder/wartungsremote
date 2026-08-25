@@ -20,7 +20,7 @@ import (
 	"wartungsremote/internal/config"
 )
 
-const agentVersion = "0.1.0-dev"
+const agentVersion = "0.1.1"
 
 type program struct {
 	cancel context.CancelFunc
