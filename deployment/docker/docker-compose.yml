@@ -1,0 +1,69 @@
+# Reference production layout per docs/DEPLOYMENT.md: reverse proxy exposes
+# only 443 publicly; admin web and postgres stay on the internal network.
+# Run from the repository root: docker compose -f deployment/docker/docker-compose.yml up -d
+name: wartungsremote
+
+networks:
+  internal:
+    internal: true
+  public:
+
+volumes:
+  postgres_data:
+  core_secrets:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks: [internal]
+    environment:
+      POSTGRES_DB: wartungsremote
+      POSTGRES_USER: wartungsremote
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wartungsremote"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  wr-core:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile.core
+    restart: unless-stopped
+    networks: [internal, public]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      WR_CONFIG_FILE: /app/config/server.yaml
+      WR_DATABASE_URL_FILE: /run/secrets/database_url
+      WR_SESSION_PEPPER_FILE: /run/secrets/session_pepper
+      WR_TOTP_ENCRYPTION_KEY_FILE: /run/secrets/totp_key
+    secrets:
+      - database_url
+      - session_pepper
+      - totp_key
+    volumes:
+      - ./server.example.yaml:/app/config/server.yaml:ro
+    ports:
+      # Public agent gateway. Bind to a specific interface in production
+      # instead of publishing on all interfaces, per docs/DEPLOYMENT.md §3.
+      - "8443:8443"
+      # Admin web: intentionally bound to loopback only. Reach it via SSH
+      # tunnel or your management VPN, never expose this port publicly.
+      - "127.0.0.1:9443:9443"
+
+secrets:
+  db_password:
+    file: ./secrets/db_password.txt
+  database_url:
+    file: ./secrets/database_url.txt
+  session_pepper:
+    file: ./secrets/session_pepper.bin
+  totp_key:
+    file: ./secrets/totp_key.bin

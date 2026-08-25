@@ -1,0 +1,35 @@
+[Unit]
+Description=WartungsRemote Agent
+Documentation=https://github.com/<org>/wartungsremote
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/wr-agent --config /etc/wartungsremote/agent.yaml
+Restart=always
+RestartSec=5
+User=wartungsremote
+Group=wartungsremote
+
+# V1 only implements metrics/inventory/heartbeat, none of which need root,
+# so the agent runs as an unprivileged dedicated service account (least
+# privilege, docs/SECURITY.md §18). Terminal/services/processes/power in
+# later phases will need to revisit this — either targeted capabilities or
+# the documented "unprivileged agent + small privileged helper" split.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+ReadWritePaths=/var/lib/wartungsremote /var/log/wartungsremote
+ConfigurationDirectory=wartungsremote
+StateDirectory=wartungsremote
+LogsDirectory=wartungsremote
+
+# Never log secrets; stdout/stderr go to the journal without extra fields.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

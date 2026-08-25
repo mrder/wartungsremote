@@ -1,0 +1,27 @@
+[Unit]
+Description=WartungsRemote Core Server
+Documentation=https://github.com/<org>/wartungsremote
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/wr-core
+Restart=always
+RestartSec=5
+User=wartungsremote-core
+Group=wartungsremote-core
+
+Environment=WR_CONFIG_FILE=/etc/wartungsremote/server.yaml
+EnvironmentFile=-/etc/wartungsremote/core.env
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/wartungsremote-core
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,44 @@
+# Example wr-core configuration. Copy to server.yaml and adjust.
+# Secrets are never set here directly; see docs/CONFIGURATION.md §2 and the
+# WR_*_FILE environment variables documented in deployment/docker/docker-compose.yml.
+mode: production
+
+public:
+  base_url: https://remote.example.de
+  listen: 0.0.0.0:8443
+
+admin:
+  listen: 127.0.0.1:9443
+  session_absolute_ttl: 8h
+  session_idle_ttl: 30m
+  privilege_ttl: 15m
+  require_mfa: true
+
+agent:
+  heartbeat_interval: 45s
+  connection_lost_after: 120s
+  offline_after: 300s
+  status_interval: 5m
+  enrollment_ttl: 30m
+  reconnect_max_backoff: 5m
+
+relay:
+  ticket_ttl: 60s
+  max_tunnels_per_user: 5
+  max_tunnels_per_device: 3
+  max_session_duration: 8h
+
+security:
+  session_cookie_name: __Host-wr_session
+  csrf_enabled: true
+  hsts_enabled: true
+  argon2_memory_kib: 19456
+  argon2_iterations: 2
+  argon2_parallelism: 1
+
+metrics:
+  raw_retention: 720h
+  hourly_retention: 8760h
+
+help:
+  content_dir: /app/docs

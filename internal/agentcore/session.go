@@ -1,0 +1,258 @@
+package agentcore
+
+import (
+	"context"
+	"encoding/base64"
+	"fmt"
+	"log/slog"
+	"runtime"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/coder/websocket"
+	"github.com/google/uuid"
+
+	"wartungsremote/internal/config"
+	"wartungsremote/internal/platform"
+	"wartungsremote/internal/protocol"
+)
+
+// agentSession bundles everything a single control-channel connection needs
+// to serve heartbeats, metrics, and remote-session/command dispatch
+// concurrently (heartbeat ticker, terminal I/O pumps, and the read loop all
+// write to the same *websocket.Conn, hence writeMu).
+type agentSession struct {
+	conn     *websocket.Conn
+	writeMu  sync.Mutex
+	provider platform.Provider
+	policy   config.AgentPolicy
+	sessions *sessionManager
+	files    *fileTransferManager
+	dataDir  string
+}
+
+func (a *agentSession) write(ctx context.Context, msgType websocket.MessageType, data []byte) error {
+	a.writeMu.Lock()
+	defer a.writeMu.Unlock()
+	return a.conn.Write(ctx, msgType, data)
+}
+
+func (a *agentSession) writeEnvelope(ctx context.Context, msgType string, requestID *string, payload any) error {
+	raw, err := protocol.Encode(msgType, requestID, payload)
+	if err != nil {
+		return err
+	}
+	writeCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	return a.write(writeCtx, websocket.MessageText, raw)
+}
+
+func (a *agentSession) writeBinaryFrame(kind byte, streamID uuid.UUID, payload []byte) error {
+	frame := protocol.EncodeStreamFrame(kind, streamID, payload)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.write(ctx, websocket.MessageBinary, frame)
+}
+
+// runSession performs a single control-channel connection attempt: dial,
+// challenge/response handshake, then heartbeat + inventory/metrics loop
+// until the connection ends or ctx is cancelled. It returns nil only when
+// ctx is cancelled (graceful shutdown); any connection failure returns an
+// error so the caller's reconnect loop applies backoff.
+func runSession(ctx context.Context, serverURL, agentVersion string, identity Identity, provider platform.Provider, policy config.AgentPolicy, dataDir string, onConnected func()) error {
+	wsURL := strings.Replace(strings.TrimRight(serverURL, "/"), "https://", "wss://", 1)
+	wsURL = strings.Replace(wsURL, "http://", "ws://", 1)
+	wsURL += "/api/v1/agent/control"
+
+	dialCtx, cancelDial := context.WithTimeout(ctx, 30*time.Second)
+	defer cancelDial()
+	conn, _, err := websocket.Dial(dialCtx, wsURL, nil)
+	if err != nil {
+		return fmt.Errorf("agentcore: dial control channel: %w", err)
+	}
+	defer conn.CloseNow()
+	conn.SetReadLimit(int64(protocol.MaxInventoryBytes))
+
+	heartbeatInterval, statusInterval, err := handshake(ctx, conn, agentVersion, identity, provider)
+	if err != nil {
+		return err
+	}
+
+	as := &agentSession{conn: conn, provider: provider, policy: policy, sessions: newSessionManager(), files: newFileTransferManager(), dataDir: dataDir}
+	defer as.sessions.closeAll()
+	defer as.files.closeAll()
+
+	slog.Info("control channel established", "device_id", identity.DeviceID, "heartbeat_interval", heartbeatInterval)
+	onConnected()
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- as.readLoop(ctx) }()
+
+	heartbeatTicker := time.NewTicker(heartbeatInterval)
+	defer heartbeatTicker.Stop()
+	statusTicker := time.NewTicker(statusInterval)
+	defer statusTicker.Stop()
+
+	var seq int64
+	as.sendMetrics(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			_ = conn.Close(websocket.StatusNormalClosure, "shutdown")
+			return nil
+		case err := <-errCh:
+			return err
+		case <-heartbeatTicker.C:
+			seq++
+			if err := as.writeEnvelope(ctx, protocol.TypeHeartbeat, nil, protocol.HeartbeatPayload{
+				UptimeSeconds: uptimeSeconds(ctx, provider),
+				Sequence:      seq,
+			}); err != nil {
+				return fmt.Errorf("agentcore: send heartbeat: %w", err)
+			}
+		case <-statusTicker.C:
+			as.sendMetrics(ctx)
+		}
+	}
+}
+
+func uptimeSeconds(ctx context.Context, provider platform.Provider) int64 {
+	inv, err := provider.Inventory(ctx)
+	if err != nil {
+		return 0
+	}
+	return inv.UptimeSeconds
+}
+
+func (a *agentSession) sendMetrics(ctx context.Context) {
+	m, err := a.provider.Metrics(ctx)
+	if err != nil {
+		slog.Warn("collect metrics failed", "error", err)
+		return
+	}
+	if err := a.writeEnvelope(ctx, protocol.TypeMetricsReport, nil, m); err != nil {
+		slog.Warn("send metrics failed", "error", err)
+	}
+}
+
+// handshake completes the control_challenge/hello/hello_ack exchange
+// described in docs/PROTOCOL.md §4 and the Ed25519 proof-of-possession
+// scheme implemented server-side in internal/controlhub.
+func handshake(ctx context.Context, conn *websocket.Conn, agentVersion string, identity Identity, provider platform.Provider) (heartbeatInterval, statusInterval time.Duration, err error) {
+	hsCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	_, raw, err := conn.Read(hsCtx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("agentcore: read challenge: %w", err)
+	}
+	env, err := protocol.Decode(raw)
+	if err != nil || env.Type != protocol.TypeControlChallenge {
+		return 0, 0, fmt.Errorf("agentcore: unexpected message instead of control_challenge")
+	}
+	var challenge protocol.ControlChallengePayload
+	if err := protocol.DecodePayload(env, &challenge); err != nil {
+		return 0, 0, fmt.Errorf("agentcore: decode challenge: %w", err)
+	}
+	nonce, err := base64.StdEncoding.DecodeString(challenge.Nonce)
+	if err != nil {
+		return 0, 0, fmt.Errorf("agentcore: decode nonce: %w", err)
+	}
+
+	signature := identity.Sign(nonce)
+
+	helloRaw, err := protocol.Encode(protocol.TypeHello, nil, protocol.HelloPayload{
+		DeviceID:     identity.DeviceID.String(),
+		InstallID:    identity.InstallID.String(),
+		AgentVersion: agentVersion,
+		OS:           runtime.GOOS,
+		Arch:         runtime.GOARCH,
+		Capabilities: provider.Capabilities(),
+		BootID:       uuid.NewString(),
+		Nonce:        challenge.Nonce,
+		Signature:    base64.StdEncoding.EncodeToString(signature),
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	if err := conn.Write(hsCtx, websocket.MessageText, helloRaw); err != nil {
+		return 0, 0, fmt.Errorf("agentcore: send hello: %w", err)
+	}
+
+	_, ackRaw, err := conn.Read(hsCtx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("agentcore: read hello_ack: %w", err)
+	}
+	ackEnv, err := protocol.Decode(ackRaw)
+	if err != nil || ackEnv.Type != protocol.TypeHelloAck {
+		return 0, 0, fmt.Errorf("agentcore: authentication rejected by server")
+	}
+	var ack protocol.HelloAckPayload
+	if err := protocol.DecodePayload(ackEnv, &ack); err != nil {
+		return 0, 0, fmt.Errorf("agentcore: decode hello_ack: %w", err)
+	}
+
+	hb := time.Duration(ack.HeartbeatIntervalSeconds) * time.Second
+	if hb <= 0 {
+		hb = 45 * time.Second
+	}
+	status := time.Duration(ack.StatusIntervalSeconds) * time.Second
+	if status <= 0 {
+		status = 5 * time.Minute
+	}
+	return hb, status, nil
+}
+
+func (a *agentSession) readLoop(ctx context.Context) error {
+	for {
+		msgType, raw, err := a.conn.Read(ctx)
+		if err != nil {
+			return fmt.Errorf("agentcore: connection closed: %w", err)
+		}
+
+		if msgType == websocket.MessageBinary {
+			a.handleBinaryFrame(raw)
+			continue
+		}
+
+		env, err := protocol.Decode(raw)
+		if err != nil {
+			continue
+		}
+		a.handleMessage(ctx, env)
+	}
+}
+
+func (a *agentSession) handleMessage(ctx context.Context, env protocol.Envelope) {
+	switch env.Type {
+	case protocol.TypeInventoryRequest:
+		inv, err := a.provider.Inventory(ctx)
+		if err != nil {
+			slog.Warn("collect inventory failed", "error", err)
+			return
+		}
+		_ = a.writeEnvelope(ctx, protocol.TypeInventoryResponse, &env.MessageID, inv)
+
+	case protocol.TypeSessionOpen:
+		a.handleSessionOpen(ctx, env)
+	case protocol.TypeTerminalResize:
+		a.handleTerminalResize(env)
+	case protocol.TypeTerminalSignal:
+		// V1: no cross-platform signal delivery implemented beyond close.
+	case protocol.TypeSessionClose, protocol.TypeTerminalClose:
+		a.handleSessionClose(env)
+	case protocol.TypeSessionPrivilegeUpdate:
+		// Recorded for future privilege-gated actions; V1 terminal doesn't
+		// yet vary local behavior by privilege state.
+	case protocol.TypeDeviceCommand:
+		a.handleDeviceCommand(ctx, env)
+
+	case protocol.TypeProtocolError:
+		var pe protocol.ProtocolErrorPayload
+		if err := protocol.DecodePayload(env, &pe); err == nil {
+			slog.Warn("server reported protocol error", "code", pe.Code, "message", pe.Message)
+		}
+	}
+}

@@ -1,0 +1,31 @@
+# Generates the local secret files referenced by deployment/docker/docker-compose.yml.
+# Run once before the first `docker compose up`. These files are gitignored.
+$ErrorActionPreference = "Stop"
+$dir = Join-Path $PSScriptRoot "..\deployment\docker\secrets"
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+function New-RandomBytesFile([string]$path, [int]$bytes) {
+    if (-not (Test-Path $path)) {
+        $buf = New-Object byte[] $bytes
+        [System.Security.Cryptography.RandomNumberGenerator]::Fill($buf)
+        [System.IO.File]::WriteAllBytes($path, $buf)
+    }
+}
+
+$dbPasswordPath = Join-Path $dir "db_password.txt"
+if (-not (Test-Path $dbPasswordPath)) {
+    $buf = New-Object byte[] 24
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($buf)
+    [Convert]::ToBase64String($buf) | Set-Content -Path $dbPasswordPath -NoNewline -Encoding ascii
+}
+
+$databaseUrlPath = Join-Path $dir "database_url.txt"
+if (-not (Test-Path $databaseUrlPath)) {
+    $dbPass = Get-Content $dbPasswordPath -Raw
+    "postgres://wartungsremote:$dbPass@postgres:5432/wartungsremote?sslmode=disable" | Set-Content -Path $databaseUrlPath -NoNewline -Encoding ascii
+}
+
+New-RandomBytesFile (Join-Path $dir "session_pepper.bin") 32
+New-RandomBytesFile (Join-Path $dir "totp_key.bin") 32
+
+Write-Host "Secrets generated in $dir"

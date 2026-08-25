@@ -1,0 +1,285 @@
+// Package config loads and validates server and agent configuration per
+// docs/CONFIGURATION.md. Security defaults must never be silently weakened
+// by empty/missing values.
+package config
+
+import (
+	"crypto/rand"
+	"fmt"
+	"log/slog"
+	"os"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+// ServerConfig is the top-level wr-core configuration.
+type ServerConfig struct {
+	Mode string `yaml:"mode"` // "production" | "development"
+
+	Public struct {
+		BaseURL string `yaml:"base_url"`
+		Listen  string `yaml:"listen"`
+	} `yaml:"public"`
+
+	Admin struct {
+		Listen             string        `yaml:"listen"`
+		SessionAbsoluteTTL time.Duration `yaml:"session_absolute_ttl"`
+		SessionIdleTTL     time.Duration `yaml:"session_idle_ttl"`
+		PrivilegeTTL       time.Duration `yaml:"privilege_ttl"`
+		RequireMFA         bool          `yaml:"require_mfa"`
+	} `yaml:"admin"`
+
+	Agent struct {
+		HeartbeatInterval    time.Duration `yaml:"heartbeat_interval"`
+		ConnectionLostAfter  time.Duration `yaml:"connection_lost_after"`
+		OfflineAfter         time.Duration `yaml:"offline_after"`
+		StatusInterval       time.Duration `yaml:"status_interval"`
+		EnrollmentTTL        time.Duration `yaml:"enrollment_ttl"`
+		ReconnectMaxBackoff  time.Duration `yaml:"reconnect_max_backoff"`
+	} `yaml:"agent"`
+
+	Relay struct {
+		TicketTTL            time.Duration `yaml:"ticket_ttl"`
+		MaxTunnelsPerUser    int           `yaml:"max_tunnels_per_user"`
+		MaxTunnelsPerDevice  int           `yaml:"max_tunnels_per_device"`
+		MaxSessionDuration   time.Duration `yaml:"max_session_duration"`
+	} `yaml:"relay"`
+
+	Security struct {
+		SessionCookieName string `yaml:"session_cookie_name"`
+		CSRFEnabled       bool   `yaml:"csrf_enabled"`
+		HSTSEnabled       bool   `yaml:"hsts_enabled"`
+		// Argon2id parameters, benchmarkable/configurable per docs/SECURITY.md §7.
+		Argon2MemoryKiB     uint32 `yaml:"argon2_memory_kib"`
+		Argon2Iterations    uint32 `yaml:"argon2_iterations"`
+		Argon2Parallelism   uint8  `yaml:"argon2_parallelism"`
+	} `yaml:"security"`
+
+	Metrics struct {
+		RawRetention    time.Duration `yaml:"raw_retention"`
+		HourlyRetention time.Duration `yaml:"hourly_retention"`
+	} `yaml:"metrics"`
+
+	// Help points at the directory containing DASHBOARD_HELP.md, rendered
+	// as the in-dashboard help pages (docs/API.md §19).
+	Help struct {
+		ContentDir string `yaml:"content_dir"`
+	} `yaml:"help"`
+
+	// Secrets are never read from the YAML file body directly; they are
+	// resolved from *_FILE environment variables. See docs/CONFIGURATION.md §2.
+	Secrets Secrets `yaml:"-"`
+}
+
+// Secrets holds resolved secret material, sourced exclusively from files
+// referenced by environment variables (never inline config, never plain env vars).
+type Secrets struct {
+	DatabaseURL          string
+	SessionPepper        []byte
+	TOTPEncryptionKey    []byte
+	InternalServiceKey   []byte
+	// ReleasePublicKey is the Ed25519 public key used to verify agent
+	// release signatures (docs/AGENT.md §15). The corresponding private
+	// key never touches the server — releases are signed offline with
+	// wr-release-sign. Not secret in the confidentiality sense, but
+	// resolved the same way so the trusted key is provisioned explicitly
+	// rather than hardcoded.
+	ReleasePublicKey []byte
+}
+
+// Default returns the documented safe defaults from docs/CONFIGURATION.md §1.
+func Default() ServerConfig {
+	var c ServerConfig
+	c.Mode = "production"
+	c.Public.BaseURL = "https://localhost:8443"
+	c.Public.Listen = "0.0.0.0:8443"
+	c.Admin.Listen = "127.0.0.1:9443"
+	c.Admin.SessionAbsoluteTTL = 8 * time.Hour
+	c.Admin.SessionIdleTTL = 30 * time.Minute
+	c.Admin.PrivilegeTTL = 15 * time.Minute
+	c.Admin.RequireMFA = true
+	c.Agent.HeartbeatInterval = 45 * time.Second
+	c.Agent.ConnectionLostAfter = 120 * time.Second
+	c.Agent.OfflineAfter = 300 * time.Second
+	c.Agent.StatusInterval = 5 * time.Minute
+	c.Agent.EnrollmentTTL = 30 * time.Minute
+	c.Agent.ReconnectMaxBackoff = 5 * time.Minute
+	c.Relay.TicketTTL = 60 * time.Second
+	c.Relay.MaxTunnelsPerUser = 5
+	c.Relay.MaxTunnelsPerDevice = 3
+	c.Relay.MaxSessionDuration = 8 * time.Hour
+	c.Security.SessionCookieName = "__Host-wr_session"
+	c.Security.CSRFEnabled = true
+	c.Security.HSTSEnabled = true
+	// OWASP Password Storage Cheat Sheet Argon2id minimum baseline (m=19 MiB, t=2, p=1).
+	c.Security.Argon2MemoryKiB = 19 * 1024
+	c.Security.Argon2Iterations = 2
+	c.Security.Argon2Parallelism = 1
+	c.Metrics.RawRetention = 30 * 24 * time.Hour
+	c.Metrics.HourlyRetention = 365 * 24 * time.Hour
+	c.Help.ContentDir = "docs"
+	return c
+}
+
+// LoadServer reads defaults, overlays an optional YAML file, then resolves
+// secrets from *_FILE environment variables, per the documented priority:
+// Defaults < config file < environment non-secret overrides < secret files.
+func LoadServer(path string) (ServerConfig, error) {
+	c := Default()
+
+	if path != "" {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return c, fmt.Errorf("config: read %s: %w", path, err)
+			}
+		} else if err := yaml.Unmarshal(body, &c); err != nil {
+			return c, fmt.Errorf("config: parse %s: %w", path, err)
+		}
+	}
+
+	secrets, err := loadSecrets()
+	if err != nil {
+		return c, err
+	}
+	c.Secrets = secrets
+
+	if c.Mode == "development" {
+		// Never do this in production: ephemeral secrets mean every restart
+		// invalidates all sessions and TOTP enrollments. This exists purely
+		// so `mode: development` works without hand-provisioning secret
+		// files, matching docs/CONFIGURATION.md §5 (only production start-up
+		// is required to fail on missing secrets).
+		if err := c.fillDevelopmentSecrets(); err != nil {
+			return c, err
+		}
+	}
+
+	if err := c.Validate(); err != nil {
+		return c, err
+	}
+	return c, nil
+}
+
+func (c *ServerConfig) fillDevelopmentSecrets() error {
+	if len(c.Secrets.SessionPepper) < 32 {
+		b, err := randomBytes(32)
+		if err != nil {
+			return err
+		}
+		c.Secrets.SessionPepper = b
+		slog.Warn("WR_SESSION_PEPPER_FILE not set; using an ephemeral development-only session pepper (sessions will not survive a restart)")
+	}
+	if len(c.Secrets.TOTPEncryptionKey) != 32 {
+		b, err := randomBytes(32)
+		if err != nil {
+			return err
+		}
+		c.Secrets.TOTPEncryptionKey = b
+		slog.Warn("WR_TOTP_ENCRYPTION_KEY_FILE not set; using an ephemeral development-only TOTP key (existing TOTP enrollments will stop validating after a restart)")
+	}
+	return nil
+}
+
+func randomBytes(n int) ([]byte, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return nil, fmt.Errorf("config: generate ephemeral secret: %w", err)
+	}
+	return b, nil
+}
+
+func loadSecrets() (Secrets, error) {
+	var s Secrets
+
+	dbURL, err := readSecretFile("WR_DATABASE_URL_FILE")
+	if err != nil {
+		return s, err
+	}
+	s.DatabaseURL = string(dbURL)
+
+	pepper, err := readSecretFile("WR_SESSION_PEPPER_FILE")
+	if err != nil {
+		return s, err
+	}
+	s.SessionPepper = pepper
+
+	totpKey, err := readSecretFile("WR_TOTP_ENCRYPTION_KEY_FILE")
+	if err != nil {
+		return s, err
+	}
+	s.TOTPEncryptionKey = totpKey
+
+	svcKey, err := readSecretFile("WR_INTERNAL_SERVICE_KEY_FILE")
+	if err != nil {
+		return s, err
+	}
+	s.InternalServiceKey = svcKey
+
+	releaseKey, err := readSecretFile("WR_RELEASE_PUBLIC_KEY_FILE")
+	if err != nil {
+		return s, err
+	}
+	s.ReleasePublicKey = releaseKey
+
+	return s, nil
+}
+
+func readSecretFile(envVar string) ([]byte, error) {
+	path := os.Getenv(envVar)
+	if path == "" {
+		return nil, nil
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("config: read secret %s (%s): %w", envVar, path, err)
+	}
+	return trimTrailingNewline(body), nil
+}
+
+func trimTrailingNewline(b []byte) []byte {
+	for len(b) > 0 && (b[len(b)-1] == '\n' || b[len(b)-1] == '\r') {
+		b = b[:len(b)-1]
+	}
+	return b
+}
+
+// Validate enforces the documented start-time refusal rules (§5): production
+// mode must never start with an insecure configuration.
+func (c ServerConfig) Validate() error {
+	if c.Mode != "production" && c.Mode != "development" {
+		return fmt.Errorf("config: invalid mode %q", c.Mode)
+	}
+	if c.Admin.SessionAbsoluteTTL <= 0 || c.Admin.SessionIdleTTL <= 0 || c.Admin.PrivilegeTTL <= 0 {
+		return fmt.Errorf("config: session/privilege TTLs must be positive")
+	}
+	if c.Agent.HeartbeatInterval <= 0 || c.Agent.ConnectionLostAfter <= 0 || c.Agent.OfflineAfter <= 0 {
+		return fmt.Errorf("config: agent timing values must be positive")
+	}
+	if c.Agent.OfflineAfter <= c.Agent.ConnectionLostAfter {
+		return fmt.Errorf("config: offline_after must be greater than connection_lost_after")
+	}
+
+	if c.Mode == "production" {
+		if !c.Admin.RequireMFA {
+			return fmt.Errorf("config: production mode requires admin.require_mfa=true")
+		}
+		if !c.Security.HSTSEnabled || !c.Security.CSRFEnabled {
+			return fmt.Errorf("config: production mode requires hsts_enabled and csrf_enabled")
+		}
+		if len(c.Security.SessionCookieName) < 6 || c.Security.SessionCookieName[:6] != "__Host" {
+			return fmt.Errorf("config: production mode requires a __Host- prefixed session cookie name")
+		}
+		if c.Secrets.DatabaseURL == "" {
+			return fmt.Errorf("config: production mode requires WR_DATABASE_URL_FILE")
+		}
+		if len(c.Secrets.SessionPepper) < 32 {
+			return fmt.Errorf("config: production mode requires WR_SESSION_PEPPER_FILE with >= 32 bytes")
+		}
+		if len(c.Secrets.TOTPEncryptionKey) != 32 {
+			return fmt.Errorf("config: production mode requires WR_TOTP_ENCRYPTION_KEY_FILE with exactly 32 bytes (AES-256)")
+		}
+	}
+	return nil
+}

@@ -1,0 +1,113 @@
+# WartungsRemote – Konfigurationsreferenz V1
+
+## 1. Serverkonfiguration
+
+Beispiel `server.yaml` – Secrets werden nicht direkt in diese Datei geschrieben, sondern über Secret-Dateien/Environment referenziert.
+
+```yaml
+mode: production
+
+public:
+  base_url: https://remote.example.de
+  listen: 0.0.0.0:8080
+
+admin:
+  listen: 127.0.0.1:9443
+  session_absolute_ttl: 8h
+  session_idle_ttl: 30m
+  privilege_ttl: 15m
+  require_mfa: true
+
+agent:
+  heartbeat_interval: 45s
+  connection_lost_after: 120s
+  offline_after: 300s
+  status_interval: 5m
+  enrollment_ttl: 30m
+  reconnect_max_backoff: 5m
+
+relay:
+  ticket_ttl: 60s
+  max_tunnels_per_user: 5
+  max_tunnels_per_device: 3
+  max_session_duration: 8h
+
+security:
+  session_cookie_name: __Host-wr_session
+  csrf_enabled: true
+  hsts_enabled: true
+
+metrics:
+  raw_retention: 720h
+  hourly_retention: 8760h
+
+help:
+  content_dir: /app/docs
+```
+
+## 2. Umgebungsvariablen / Secrets
+
+Beispielnamen:
+
+```text
+WR_DATABASE_URL_FILE
+WR_SESSION_PEPPER_FILE
+WR_TOTP_ENCRYPTION_KEY_FILE
+WR_INTERNAL_SERVICE_KEY_FILE
+```
+
+Nicht unterstützen:
+
+```text
+WR_DISABLE_TLS_VERIFY=true
+WR_ALLOW_ANY_TUNNEL=true
+WR_DEFAULT_ADMIN_PASSWORD=...
+```
+
+## 3. Agentkonfiguration
+
+```yaml
+server_url: https://remote.example.de
+update_channel: stable
+log_level: info
+
+policy:
+  terminal: true
+  ssh_tunnel: true
+  rdp_tunnel: true
+  files_read: true
+  files_write: true
+  service_control: true
+  process_terminate: true
+  power_control: true
+```
+
+OS-unpassende Optionen werden ignoriert oder als unavailable gemeldet, aber nicht als Fehler des gesamten Agents behandelt.
+
+## 4. Lokale Agentpolicy
+
+Serverpermission UND lokale Agentpolicy müssen beide erlauben.
+
+Beispiel: Wenn `rdp_tunnel: false`, kann auch ein Superadmin keinen RDP-Tunnel über diesen Agent erzeugen, bis die lokale Policy geändert wurde.
+
+## 5. Konfigurationsvalidierung
+
+Beim Start:
+
+- unbekannte kritische Keys -> Warnung oder Fehler entsprechend Schema.
+- negative/unsinnige Timeouts -> Startfehler.
+- Production ohne MFA -> Startfehler für Remote-Admin-Funktionen.
+- Production mit unsicherer Cookie-/TLS-Konfiguration -> Startfehler.
+
+## 6. Konfigurationspriorität
+
+Empfehlung:
+
+```text
+Defaults
+< config file
+< environment non-secret overrides
+< secret files
+```
+
+Security Defaults dürfen nicht durch leere Werte versehentlich deaktiviert werden.

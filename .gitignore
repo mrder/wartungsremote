@@ -1,0 +1,44 @@
+# Build artifacts
+/wr-agent
+/wr-agent.exe
+/wr-core
+/wr-core.exe
+/wr-helper
+/wr-helper.exe
+*.exe
+*.exe~
+/dist/
+
+# Local secrets — never commit real credentials
+deployment/docker/secrets/
+*.env
+!*.example.env
+server.yaml
+agent.yaml
+!deployment/docker/server.example.yaml
+*.token
+
+# Go
+/vendor/
+
+# Node / web
+web/node_modules/
+web/dist/
+
+# Local throwaway dev database + dev-only secrets created during manual
+# verification (see README.md Quick start) — never real deployment data.
+.devdb/
+.devsecrets/
+*.devagent/
+
+# Local runtime logs from manual dev verification
+*.log
+
+# Throwaway scratch programs used during manual live verification
+/scratch*/
+
+# Editor/OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
