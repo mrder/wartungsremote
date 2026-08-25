@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"encoding/json"
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -19,30 +18,32 @@ import (
 	"wartungsremote/internal/help"
 	"wartungsremote/internal/maintenance"
 	"wartungsremote/internal/monitoring"
+	"wartungsremote/internal/netutil"
 	"wartungsremote/internal/relay"
 	"wartungsremote/internal/remotesession"
 )
 
 type handlers struct {
-	cfg          config.ServerConfig
-	devices      *device.Repo
-	enroll       *enrollment.Service
-	auth         *auth.Service
-	hub          *controlhub.Hub
-	health       *monitoring.Engine
-	audit        *audit.Logger
-	version      string
-	sessions     *remotesession.Service
-	sessionRepo  *remotesession.Repo
-	privilege    *remotesession.PrivilegeRepo
-	tunnels      *remotesession.TunnelRepo
-	broker       *relay.Broker
-	privilegeTTL time.Duration
-	maintenance  *maintenance.Repo
-	customers    *customer.Repo
-	alerts       *alerting.Repo
-	releases     *agentrelease.Repo
-	help         []help.Section
+	cfg            config.ServerConfig
+	trustedProxies netutil.TrustedProxies
+	devices        *device.Repo
+	enroll         *enrollment.Service
+	auth           *auth.Service
+	hub            *controlhub.Hub
+	health         *monitoring.Engine
+	audit          *audit.Logger
+	version        string
+	sessions       *remotesession.Service
+	sessionRepo    *remotesession.Repo
+	privilege      *remotesession.PrivilegeRepo
+	tunnels        *remotesession.TunnelRepo
+	broker         *relay.Broker
+	privilegeTTL   time.Duration
+	maintenance    *maintenance.Repo
+	customers      *customer.Repo
+	alerts         *alerting.Repo
+	releases       *agentrelease.Repo
+	help           []help.Section
 }
 
 // agentRejectionReason strips remotesession's internal error-wrapping
@@ -74,19 +75,8 @@ func decodeJSON(r *http.Request, dst any) error {
 }
 
 // clientIP returns a bare IP address suitable for storage in a Postgres
-// `inet` column. r.RemoteAddr is always host:port, and X-Forwarded-For may
-// carry a comma-separated proxy chain, so both must be normalized before
-// use — an unparsed "host:port" value fails inet insertion outright.
-func clientIP(r *http.Request) string {
-	if xf := r.Header.Get("X-Forwarded-For"); xf != "" {
-		first := strings.TrimSpace(strings.Split(xf, ",")[0])
-		if first != "" {
-			return first
-		}
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+// `inet` column, honoring X-Forwarded-For only when the request came from
+// a configured trusted proxy (see netutil.ClientIP).
+func (h *handlers) clientIP(r *http.Request) string {
+	return netutil.ClientIP(r, h.trustedProxies)
 }

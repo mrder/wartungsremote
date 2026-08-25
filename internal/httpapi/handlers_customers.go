@@ -48,7 +48,7 @@ func (h *handlers) handleCreateCustomer(w http.ResponseWriter, r *http.Request) 
 	user, _ := authpkg.UserFromContext(r.Context())
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID, CustomerID: &c.ID,
-		EventType: "customer.created", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "customer.created", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 	})
 	writeJSON(w, http.StatusCreated, c, nil)
 }
@@ -84,7 +84,7 @@ func (h *handlers) handleUpdateCustomer(w http.ResponseWriter, r *http.Request) 
 	user, _ := authpkg.UserFromContext(r.Context())
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID, CustomerID: &id,
-		EventType: "customer.updated", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "customer.updated", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"state": "updated"}, nil)
 }

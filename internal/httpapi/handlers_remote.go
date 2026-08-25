@@ -91,7 +91,7 @@ func (h *handlers) handleServiceAction(w http.ResponseWriter, r *http.Request) {
 	user, _ := authpkg.UserFromContext(r.Context())
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID, DeviceID: &d.ID,
-		EventType: "service." + action, Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "service." + action, Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 		Metadata: map[string]any{"service": serviceName},
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"state": "ok"}, nil)
@@ -153,7 +153,7 @@ func (h *handlers) handleQueryLogs(w http.ResponseWriter, r *http.Request) {
 	user, _ := authpkg.UserFromContext(r.Context())
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID, DeviceID: &d.ID,
-		EventType: "logs.queried", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "logs.queried", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 	})
 	writeJSON(w, http.StatusOK, result.Data, nil)
 }
@@ -182,7 +182,7 @@ func (h *handlers) handleTerminateProcess(w http.ResponseWriter, r *http.Request
 	user, _ := authpkg.UserFromContext(r.Context())
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID, DeviceID: &d.ID,
-		EventType: "process.terminate", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "process.terminate", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 		Metadata: map[string]any{"pid": pid},
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"state": "ok"}, nil)

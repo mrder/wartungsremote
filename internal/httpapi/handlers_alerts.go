@@ -72,7 +72,7 @@ func (h *handlers) handleCreateAlertRule(w http.ResponseWriter, r *http.Request)
 	user, _ := authpkg.UserFromContext(r.Context())
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID,
-		EventType: "alert_rule.created", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "alert_rule.created", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 		Metadata: map[string]any{"rule_type": body.RuleType, "scope_type": body.ScopeType},
 	})
 	writeJSON(w, http.StatusCreated, rule, nil)
@@ -186,7 +186,7 @@ func (h *handlers) handleAcknowledgeAlert(w http.ResponseWriter, r *http.Request
 	user, _ := authpkg.UserFromContext(r.Context())
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID,
-		EventType: "alert.acknowledged", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "alert.acknowledged", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 		Metadata: map[string]any{"alert_id": id},
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"state": "ok"}, nil)
@@ -214,7 +214,7 @@ func (h *handlers) handleResolveAlert(w http.ResponseWriter, r *http.Request) {
 	user, _ := authpkg.UserFromContext(r.Context())
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID,
-		EventType: "alert.resolved", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "alert.resolved", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 		Metadata: map[string]any{"alert_id": id, "reason": "manual"},
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"state": "ok"}, nil)

@@ -10,9 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +20,7 @@ import (
 	"wartungsremote/internal/audit"
 	"wartungsremote/internal/device"
 	"wartungsremote/internal/monitoring"
+	"wartungsremote/internal/netutil"
 	"wartungsremote/internal/protocol"
 )
 
@@ -59,10 +58,11 @@ type DeviceDisconnectHandler func(deviceID uuid.UUID)
 type VersionBlockedChecker func(ctx context.Context, osFamily, architecture, version string) (bool, error)
 
 type Hub struct {
-	devices *device.Repo
-	health  *monitoring.Engine
-	audit   *audit.Logger
-	timing  Timing
+	devices        *device.Repo
+	health         *monitoring.Engine
+	audit          *audit.Logger
+	timing         Timing
+	trustedProxies netutil.TrustedProxies
 
 	mu    sync.Mutex
 	conns map[uuid.UUID]*connection // keyed by device ID
@@ -80,13 +80,14 @@ type Hub struct {
 	versionBlocked   VersionBlockedChecker
 }
 
-func NewHub(devices *device.Repo, health *monitoring.Engine, auditLogger *audit.Logger, timing Timing) *Hub {
+func NewHub(devices *device.Repo, health *monitoring.Engine, auditLogger *audit.Logger, timing Timing, trustedProxies netutil.TrustedProxies) *Hub {
 	return &Hub{
-		devices: devices,
-		health:  health,
-		audit:   auditLogger,
-		timing:  timing,
-		conns:   make(map[uuid.UUID]*connection),
+		devices:        devices,
+		health:         health,
+		audit:          auditLogger,
+		timing:         timing,
+		trustedProxies: trustedProxies,
+		conns:          make(map[uuid.UUID]*connection),
 	}
 }
 
@@ -409,7 +410,7 @@ func (h *Hub) ServeAgentWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c := &connection{deviceID: deviceID, installID: installID, remoteIP: clientIP(r), conn: conn, cancel: cancel, pending: make(map[string]chan protocol.Envelope)}
+	c := &connection{deviceID: deviceID, installID: installID, remoteIP: h.clientIP(r), conn: conn, cancel: cancel, pending: make(map[string]chan protocol.Envelope)}
 	h.mu.Lock()
 	if old, exists := h.conns[deviceID]; exists {
 		// Only one active primary control session per install ID: close the
@@ -421,14 +422,14 @@ func (h *Hub) ServeAgentWS(w http.ResponseWriter, r *http.Request) {
 	h.conns[deviceID] = c
 	h.mu.Unlock()
 
-	_ = h.devices.UpdateConnectivity(ctx, deviceID, device.StatusOnline, clientIP(r))
+	_ = h.devices.UpdateConnectivity(ctx, deviceID, device.StatusOnline, h.clientIP(r))
 	_, _, _ = h.health.Evaluate(ctx, deviceID)
 	_ = h.audit.Record(ctx, audit.Event{
 		ActorType: audit.ActorAgent,
 		DeviceID:  &deviceID,
 		EventType: audit.EventDeviceConnected,
 		Result:    audit.ResultSuccess,
-		SourceIP:  clientIP(r),
+		SourceIP:  h.clientIP(r),
 	})
 	slog.Info("agent connected", "device_id", deviceID, "install_id", installID)
 
@@ -562,18 +563,8 @@ func osFamilyOf(os string) string {
 
 // clientIP returns a bare IP suitable for a Postgres `inet` column; see the
 // identical rationale in internal/httpapi.clientIP.
-func clientIP(r *http.Request) string {
-	if xf := r.Header.Get("X-Forwarded-For"); xf != "" {
-		first := strings.TrimSpace(strings.Split(xf, ",")[0])
-		if first != "" {
-			return first
-		}
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+func (h *Hub) clientIP(r *http.Request) string {
+	return netutil.ClientIP(r, h.trustedProxies)
 }
 
 func (h *Hub) readLoop(ctx context.Context, c *connection) {

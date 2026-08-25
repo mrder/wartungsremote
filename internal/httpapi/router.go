@@ -6,6 +6,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"wartungsremote/internal/help"
 	"wartungsremote/internal/maintenance"
 	"wartungsremote/internal/monitoring"
+	"wartungsremote/internal/netutil"
 	"wartungsremote/internal/relay"
 	"wartungsremote/internal/remotesession"
 )
@@ -52,6 +54,14 @@ func (r *Router) Close() {
 func NewRouter(deps Dependencies) (*Router, error) {
 	cfg := deps.Config
 
+	// Already validated at config load time (config.ServerConfig.Validate);
+	// re-parsing here just turns it into the matcher both the HTTP handlers
+	// and the control channel need.
+	trustedProxies, err := netutil.ParseTrustedProxies(cfg.Security.TrustedProxies)
+	if err != nil {
+		return nil, fmt.Errorf("httpapi: %w", err)
+	}
+
 	devices := device.NewRepo(deps.Pool)
 	healthEngine := monitoring.NewEngine(devices, monitoring.DefaultThresholds())
 	enroll := enrollment.New(deps.Pool)
@@ -73,7 +83,7 @@ func NewRouter(deps Dependencies) (*Router, error) {
 		ConnectionLostAfter: cfg.Agent.ConnectionLostAfter,
 		OfflineAfter:        cfg.Agent.OfflineAfter,
 		StatusInterval:      cfg.Agent.StatusInterval,
-	})
+	}, trustedProxies)
 	go hub.Run(hubCtx)
 
 	broker := relay.NewBroker(hub)
@@ -163,25 +173,26 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	})
 
 	h := &handlers{
-		cfg:          cfg,
-		devices:      devices,
-		enroll:       enroll,
-		auth:         authSvc,
-		hub:          hub,
-		health:       healthEngine,
-		audit:        deps.Audit,
-		version:      deps.Version,
-		sessions:     sessionSvc,
-		sessionRepo:  sessionRepo,
-		privilege:    privilegeRepo,
-		tunnels:      tunnelRepo,
-		broker:       broker,
-		privilegeTTL: cfg.Admin.PrivilegeTTL,
-		maintenance:  maintenanceRepo,
-		customers:    customers,
-		alerts:       alertsRepo,
-		releases:     releasesRepo,
-		help:         helpSections,
+		cfg:            cfg,
+		trustedProxies: trustedProxies,
+		devices:        devices,
+		enroll:         enroll,
+		auth:           authSvc,
+		hub:            hub,
+		health:         healthEngine,
+		audit:          deps.Audit,
+		version:        deps.Version,
+		sessions:       sessionSvc,
+		sessionRepo:    sessionRepo,
+		privilege:      privilegeRepo,
+		tunnels:        tunnelRepo,
+		broker:         broker,
+		privilegeTTL:   cfg.Admin.PrivilegeTTL,
+		maintenance:    maintenanceRepo,
+		customers:      customers,
+		alerts:         alertsRepo,
+		releases:       releasesRepo,
+		help:           helpSections,
 	}
 
 	public := http.NewServeMux()

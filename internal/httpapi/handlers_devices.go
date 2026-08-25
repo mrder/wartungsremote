@@ -181,7 +181,7 @@ func (h *handlers) handlePatchDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, _ := authpkg.UserFromContext(r.Context())
-	_ = h.audit.Record(r.Context(), audit.Event{ActorType: audit.ActorUser, ActorID: &user.ID, DeviceID: &d.ID, EventType: audit.EventDeviceUpdated, Result: audit.ResultSuccess, SourceIP: clientIP(r)})
+	_ = h.audit.Record(r.Context(), audit.Event{ActorType: audit.ActorUser, ActorID: &user.ID, DeviceID: &d.ID, EventType: audit.EventDeviceUpdated, Result: audit.ResultSuccess, SourceIP: h.clientIP(r)})
 	writeJSON(w, http.StatusOK, map[string]any{"state": "updated"}, nil)
 }
 
@@ -297,7 +297,7 @@ func (h *handlers) handleRevokeDevice(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to revoke device")
 		return
 	}
-	_ = h.audit.Record(r.Context(), audit.Event{ActorType: audit.ActorUser, ActorID: &user.ID, DeviceID: &d.ID, EventType: audit.EventDeviceRevoked, Result: audit.ResultSuccess, SourceIP: clientIP(r)})
+	_ = h.audit.Record(r.Context(), audit.Event{ActorType: audit.ActorUser, ActorID: &user.ID, DeviceID: &d.ID, EventType: audit.EventDeviceRevoked, Result: audit.ResultSuccess, SourceIP: h.clientIP(r)})
 	writeJSON(w, http.StatusOK, map[string]any{"state": "revoked"}, nil)
 }
 
@@ -386,7 +386,7 @@ func (h *handlers) handleExportAuditLog(w http.ResponseWriter, r *http.Request) 
 	user, _ := authpkg.UserFromContext(r.Context())
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID,
-		EventType: "audit.exported", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "audit.exported", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 		Metadata: map[string]any{"format": format, "count": len(entries)},
 	})
 

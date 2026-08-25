@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"wartungsremote/internal/netutil"
 )
 
 // ServerConfig is the top-level wr-core configuration.
@@ -31,19 +33,19 @@ type ServerConfig struct {
 	} `yaml:"admin"`
 
 	Agent struct {
-		HeartbeatInterval    time.Duration `yaml:"heartbeat_interval"`
-		ConnectionLostAfter  time.Duration `yaml:"connection_lost_after"`
-		OfflineAfter         time.Duration `yaml:"offline_after"`
-		StatusInterval       time.Duration `yaml:"status_interval"`
-		EnrollmentTTL        time.Duration `yaml:"enrollment_ttl"`
-		ReconnectMaxBackoff  time.Duration `yaml:"reconnect_max_backoff"`
+		HeartbeatInterval   time.Duration `yaml:"heartbeat_interval"`
+		ConnectionLostAfter time.Duration `yaml:"connection_lost_after"`
+		OfflineAfter        time.Duration `yaml:"offline_after"`
+		StatusInterval      time.Duration `yaml:"status_interval"`
+		EnrollmentTTL       time.Duration `yaml:"enrollment_ttl"`
+		ReconnectMaxBackoff time.Duration `yaml:"reconnect_max_backoff"`
 	} `yaml:"agent"`
 
 	Relay struct {
-		TicketTTL            time.Duration `yaml:"ticket_ttl"`
-		MaxTunnelsPerUser    int           `yaml:"max_tunnels_per_user"`
-		MaxTunnelsPerDevice  int           `yaml:"max_tunnels_per_device"`
-		MaxSessionDuration   time.Duration `yaml:"max_session_duration"`
+		TicketTTL           time.Duration `yaml:"ticket_ttl"`
+		MaxTunnelsPerUser   int           `yaml:"max_tunnels_per_user"`
+		MaxTunnelsPerDevice int           `yaml:"max_tunnels_per_device"`
+		MaxSessionDuration  time.Duration `yaml:"max_session_duration"`
 	} `yaml:"relay"`
 
 	Security struct {
@@ -51,9 +53,18 @@ type ServerConfig struct {
 		CSRFEnabled       bool   `yaml:"csrf_enabled"`
 		HSTSEnabled       bool   `yaml:"hsts_enabled"`
 		// Argon2id parameters, benchmarkable/configurable per docs/SECURITY.md §7.
-		Argon2MemoryKiB     uint32 `yaml:"argon2_memory_kib"`
-		Argon2Iterations    uint32 `yaml:"argon2_iterations"`
-		Argon2Parallelism   uint8  `yaml:"argon2_parallelism"`
+		Argon2MemoryKiB   uint32 `yaml:"argon2_memory_kib"`
+		Argon2Iterations  uint32 `yaml:"argon2_iterations"`
+		Argon2Parallelism uint8  `yaml:"argon2_parallelism"`
+		// TrustedProxies lists the only IPs/CIDRs allowed to set
+		// X-Forwarded-For when determining a caller's IP for audit/device
+		// tracking purposes (e.g. a reverse proxy container's address on
+		// the same Docker network). Empty (the default) means nobody is
+		// trusted and X-Forwarded-For is always ignored — the raw TCP
+		// peer address is used instead. Never add an entry here unless a
+		// proxy actually sits at that exact address, since anything in
+		// this list can claim any IP it wants on behalf of a caller.
+		TrustedProxies []string `yaml:"trusted_proxies"`
 	} `yaml:"security"`
 
 	Metrics struct {
@@ -75,10 +86,10 @@ type ServerConfig struct {
 // Secrets holds resolved secret material, sourced exclusively from files
 // referenced by environment variables (never inline config, never plain env vars).
 type Secrets struct {
-	DatabaseURL          string
-	SessionPepper        []byte
-	TOTPEncryptionKey    []byte
-	InternalServiceKey   []byte
+	DatabaseURL        string
+	SessionPepper      []byte
+	TOTPEncryptionKey  []byte
+	InternalServiceKey []byte
 	// ReleasePublicKey is the Ed25519 public key used to verify agent
 	// release signatures (docs/AGENT.md §15). The corresponding private
 	// key never touches the server — releases are signed offline with
@@ -259,6 +270,9 @@ func (c ServerConfig) Validate() error {
 	}
 	if c.Agent.OfflineAfter <= c.Agent.ConnectionLostAfter {
 		return fmt.Errorf("config: offline_after must be greater than connection_lost_after")
+	}
+	if _, err := netutil.ParseTrustedProxies(c.Security.TrustedProxies); err != nil {
+		return fmt.Errorf("config: %w", err)
 	}
 
 	if c.Mode == "production" {

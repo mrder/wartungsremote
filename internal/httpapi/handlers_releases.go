@@ -72,7 +72,7 @@ func (h *handlers) handleCreateRelease(w http.ResponseWriter, r *http.Request) {
 	user, _ := authpkg.UserFromContext(r.Context())
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID,
-		EventType: "agent_release.created", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "agent_release.created", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 		Metadata: map[string]any{"version": rl.Version, "os_family": rl.OSFamily, "architecture": rl.Architecture, "channel": rl.Channel},
 	})
 	writeJSON(w, http.StatusCreated, rl, nil)
@@ -153,7 +153,7 @@ func (h *handlers) handleTriggerDeviceUpdate(w http.ResponseWriter, r *http.Requ
 	user, _ := authpkg.UserFromContext(r.Context())
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID, DeviceID: &d.ID,
-		EventType: "agent.update.triggered", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "agent.update.triggered", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 		Metadata: map[string]any{"target_version": rl.Version, "from_version": d.AgentVersion},
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"target_version": rl.Version}, nil)

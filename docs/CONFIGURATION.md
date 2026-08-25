@@ -36,6 +36,7 @@ security:
   session_cookie_name: __Host-wr_session
   csrf_enabled: true
   hsts_enabled: true
+  trusted_proxies: []
 
 metrics:
   raw_retention: 720h
@@ -44,6 +45,16 @@ metrics:
 help:
   content_dir: /app/docs
 ```
+
+`security.trusted_proxies` ist standardmäßig leer — dann wird `X-Forwarded-For`
+grundsätzlich ignoriert und immer die rohe TCP-Peer-Adresse als Client-IP
+verwendet (relevant für Device-IP-Tracking und Audit-Einträge). Ohne diese
+Absicherung könnte jeder Aufrufer (auch ein böswilliger Agent) per Header
+eine beliebige IP vortäuschen. Nur setzen, wenn wr-core tatsächlich hinter
+einem Reverse Proxy (nginx/Traefik/Cloudflare Tunnel) für eigene
+TLS-Terminierung läuft — dann die exakte IP/CIDR dieses Proxys eintragen,
+sonst nichts. Ein direktes Docker-Port-Mapping ohne Reverse Proxy braucht
+das nicht: Docker reicht die echte Client-IP bereits unverändert durch.
 
 ## 2. Umgebungsvariablen / Secrets
 

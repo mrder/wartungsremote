@@ -59,7 +59,7 @@ func (h *handlers) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID, DeviceID: &d.ID, SessionID: &sess.ID,
-		EventType: "remote_session.opened", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "remote_session.opened", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 		Metadata: map[string]any{"kind": sess.Kind},
 	})
 
@@ -124,7 +124,7 @@ func (h *handlers) handleCloseSession(w http.ResponseWriter, r *http.Request) {
 	user, _ := authpkg.UserFromContext(r.Context())
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID, DeviceID: &sess.DeviceID, SessionID: &sess.ID,
-		EventType: "remote_session.closed", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "remote_session.closed", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"state": "closed"}, nil)
 }
@@ -264,7 +264,7 @@ func (h *handlers) handleGrantPrivilege(w http.ResponseWriter, r *http.Request) 
 
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID, DeviceID: &sess.DeviceID, SessionID: &sess.ID,
-		EventType: "privilege.granted", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "privilege.granted", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 		Metadata: map[string]any{"privilege_session_id": priv.ID, "valid_until": priv.ValidUntil},
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"privilege_session_id": priv.ID, "valid_until": priv.ValidUntil}, nil)
@@ -287,7 +287,7 @@ func (h *handlers) handleRevokePrivilege(w http.ResponseWriter, r *http.Request)
 	user, _ := authpkg.UserFromContext(r.Context())
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID, DeviceID: &sess.DeviceID, SessionID: &sess.ID,
-		EventType: "privilege.revoked", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "privilege.revoked", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"state": "revoked"}, nil)
 }

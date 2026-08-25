@@ -73,7 +73,7 @@ func (h *handlers) handleCreateEnrollment(w http.ResponseWriter, r *http.Request
 
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID, CustomerID: customerID,
-		EventType: audit.EventEnrollmentCreated, Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: audit.EventEnrollmentCreated, Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 		Metadata: map[string]any{"enrollment_id": created.ID},
 	})
 
@@ -101,7 +101,7 @@ func (h *handlers) handleRevokeEnrollment(w http.ResponseWriter, r *http.Request
 		writeErr(w, http.StatusNotFound, "resource_not_found", "Enrollment not found or already used")
 		return
 	}
-	_ = h.audit.Record(r.Context(), audit.Event{ActorType: audit.ActorUser, ActorID: &user.ID, EventType: audit.EventEnrollmentRevoked, Result: audit.ResultSuccess, SourceIP: clientIP(r), Metadata: map[string]any{"enrollment_id": id}})
+	_ = h.audit.Record(r.Context(), audit.Event{ActorType: audit.ActorUser, ActorID: &user.ID, EventType: audit.EventEnrollmentRevoked, Result: audit.ResultSuccess, SourceIP: h.clientIP(r), Metadata: map[string]any{"enrollment_id": id}})
 	writeJSON(w, http.StatusOK, map[string]any{"state": "revoked"}, nil)
 }
 
@@ -120,7 +120,7 @@ type agentEnrollRequest struct {
 }
 
 func (h *handlers) handleAgentEnroll(w http.ResponseWriter, r *http.Request) {
-	if !enrollLimiter.Allow("enroll:" + clientIP(r)) {
+	if !enrollLimiter.Allow("enroll:" + h.clientIP(r)) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "Too many enrollment attempts")
 		return
 	}
@@ -155,7 +155,7 @@ func (h *handlers) handleAgentEnroll(w http.ResponseWriter, r *http.Request) {
 		Hostname:     req.Hostname,
 	})
 	if err != nil {
-		_ = h.audit.Record(r.Context(), audit.Event{ActorType: audit.ActorAgent, EventType: audit.EventEnrollmentRejected, Result: audit.ResultFailure, SourceIP: clientIP(r), Metadata: map[string]any{"reason": err.Error()}})
+		_ = h.audit.Record(r.Context(), audit.Event{ActorType: audit.ActorAgent, EventType: audit.EventEnrollmentRejected, Result: audit.ResultFailure, SourceIP: h.clientIP(r), Metadata: map[string]any{"reason": err.Error()}})
 		switch {
 		case errors.Is(err, enrollment.ErrTokenInvalid):
 			writeErr(w, http.StatusUnauthorized, "unauthenticated", "Enrollment token invalid or expired")
@@ -167,7 +167,7 @@ func (h *handlers) handleAgentEnroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = h.audit.Record(r.Context(), audit.Event{ActorType: audit.ActorAgent, DeviceID: &result.DeviceID, EventType: audit.EventEnrollmentConsumed, Result: audit.ResultSuccess, SourceIP: clientIP(r)})
+	_ = h.audit.Record(r.Context(), audit.Event{ActorType: audit.ActorAgent, DeviceID: &result.DeviceID, EventType: audit.EventEnrollmentConsumed, Result: audit.ResultSuccess, SourceIP: h.clientIP(r)})
 	writeJSON(w, http.StatusCreated, map[string]any{"device_id": result.DeviceID}, nil)
 }
 
@@ -181,7 +181,7 @@ func (h *handlers) handleAgentEnroll(w http.ResponseWriter, r *http.Request) {
 var controlLimiter = authpkg.NewRateLimiter(120, time.Minute)
 
 func (h *handlers) handleAgentControl(w http.ResponseWriter, r *http.Request) {
-	if !controlLimiter.Allow("control:" + clientIP(r)) {
+	if !controlLimiter.Allow("control:" + h.clientIP(r)) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "Too many connection attempts")
 		return
 	}

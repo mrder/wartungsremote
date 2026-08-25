@@ -28,7 +28,7 @@ func (h *handlers) handleRevokeAllEnrollments(w http.ResponseWriter, r *http.Req
 	user, _ := authpkg.UserFromContext(r.Context())
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID,
-		EventType: "enrollment.revoked_all", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "enrollment.revoked_all", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 		Metadata: map[string]any{"count": n},
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"revoked_count": n}, nil)
@@ -108,7 +108,7 @@ func (h *handlers) handleSetUserStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = h.audit.Record(r.Context(), audit.Event{
 			ActorType: audit.ActorUser, ActorID: &actor.ID,
-			EventType: "user.status_changed", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+			EventType: "user.status_changed", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 			Metadata: map[string]any{"target_user_id": id, "status": string(status)},
 		})
 	}
@@ -124,7 +124,7 @@ func (h *handlers) handleSetUserStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = h.audit.Record(r.Context(), audit.Event{
 			ActorType: audit.ActorUser, ActorID: &actor.ID,
-			EventType: "user.mfa_required_changed", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+			EventType: "user.mfa_required_changed", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 			Metadata: map[string]any{"target_user_id": id, "mfa_required": *body.MFARequired},
 		})
 	}
@@ -150,7 +150,7 @@ func (h *handlers) handleRevokeUserSessions(w http.ResponseWriter, r *http.Reque
 	actor, _ := authpkg.UserFromContext(r.Context())
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &actor.ID,
-		EventType: "user.sessions_revoked", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "user.sessions_revoked", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 		Metadata: map[string]any{"target_user_id": id},
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"state": "ok"}, nil)

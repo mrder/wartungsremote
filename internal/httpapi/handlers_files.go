@@ -99,7 +99,7 @@ func (h *handlers) auditFileOp(r *http.Request, deviceID uuid.UUID, eventType, p
 	user, _ := authpkg.UserFromContext(r.Context())
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID, DeviceID: &deviceID,
-		EventType: eventType, Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: eventType, Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 		Metadata: map[string]any{"path": path},
 	})
 }

@@ -87,7 +87,7 @@ func (h *handlers) handleCreateTunnel(w http.ResponseWriter, r *http.Request) {
 
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID, DeviceID: &d.ID, SessionID: &sess.ID,
-		EventType: "tunnel.opened", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "tunnel.opened", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 		Metadata: map[string]any{"target_type": req.TargetType, "tunnel_id": tunnelID},
 	})
 
@@ -105,7 +105,7 @@ func (h *handlers) handleCreateTunnel(w http.ResponseWriter, r *http.Request) {
 // wr-helper is a native binary on the admin's machine with no browser
 // session. It lives on the public listener alongside the agent gateway.
 func (h *handlers) handleTunnelStream(w http.ResponseWriter, r *http.Request) {
-	if !ticketStreamLimiter.Allow("tunnel-stream:" + clientIP(r)) {
+	if !ticketStreamLimiter.Allow("tunnel-stream:" + h.clientIP(r)) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "Too many ticket redemption attempts")
 		return
 	}
@@ -149,7 +149,7 @@ func (h *handlers) handleTunnelStream(w http.ResponseWriter, r *http.Request) {
 
 	_ = h.audit.Record(ctx, audit.Event{
 		ActorType: audit.ActorUser, ActorID: &t.UserID, DeviceID: &t.DeviceID, SessionID: &sess.ID,
-		EventType: "tunnel.connected", Result: audit.ResultSuccess, SourceIP: clientIP(r),
+		EventType: "tunnel.connected", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
 		Metadata: map[string]any{"tunnel_id": t.ID},
 	})
 

@@ -35,6 +35,15 @@ security:
   argon2_memory_kib: 19456
   argon2_iterations: 2
   argon2_parallelism: 1
+  # Only needed if a reverse proxy (nginx/Traefik/Cloudflare Tunnel) sits in
+  # front of wr-core, e.g. for its own TLS termination. Lists the exact
+  # IP(s)/CIDR of that proxy — nothing else — as the only caller(s) allowed
+  # to set X-Forwarded-For; every other caller's header is ignored and the
+  # raw TCP peer address is used instead. Leave empty (the default) for a
+  # direct deployment (including a Docker container with a plain port
+  # mapping and no reverse proxy) — Docker's own port-forwarding already
+  # preserves the real client IP, no proxy trust needed there.
+  trusted_proxies: []
 
 metrics:
   raw_retention: 720h

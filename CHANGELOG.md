@@ -5,6 +5,29 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Security fix: X-Forwarded-For was trusted unconditionally
+
+- `clientIP()` (used for every device IP-history entry and every
+  `SourceIP` recorded in the audit log) honored `X-Forwarded-For`
+  regardless of who sent it — meaning any agent or caller reaching
+  `public.listen` could set that header to make the server log an
+  arbitrary IP on its behalf, undermining the audit trail. Found while
+  investigating a question about how the public IP shown in the
+  dashboard behaves once wr-core runs behind Docker/a reverse proxy.
+- Added `internal/netutil` with a `TrustedProxies` allowlist and a new
+  `security.trusted_proxies` config option (default: empty, i.e. nobody
+  trusted — `X-Forwarded-For` is always ignored and the raw TCP peer
+  address is used). Only needs to be set to the exact address of an
+  actual reverse proxy in front of wr-core; a plain Docker port mapping
+  needs nothing, since Docker already preserves the real client IP.
+  `internal/controlhub.Hub` and `internal/httpapi`'s `handlers` now both
+  resolve client IPs through this shared, trusted-proxy-aware helper
+  instead of two separately duplicated, unconditionally-trusting copies.
+- Live-verified against the running dev server: a forged
+  `X-Forwarded-For: 6.6.6.6` on an enrollment request was correctly
+  ignored post-fix (audit log recorded the real `127.0.0.1` peer
+  address instead).
+
 ### Security-relevant decision: Linux agent now runs as root
 
 - Changed `scripts/install-agent-linux.sh` and
