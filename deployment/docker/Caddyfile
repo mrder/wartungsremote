@@ -1,0 +1,15 @@
+{
+	email {$ACME_EMAIL:internal@example.invalid}
+}
+
+{$WR_DOMAIN} {
+	# Agent control-channel/tunnel connections are long-lived WebSockets
+	# (heartbeat every few seconds); never let the proxy time one out from
+	# under a healthy connection (docs/DEPLOYMENT.md §4).
+	reverse_proxy wr-core:8443 {
+		transport http {
+			read_timeout 0
+			write_timeout 0
+		}
+	}
+}

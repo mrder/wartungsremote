@@ -38,9 +38,15 @@ remote-admin.internal   -> Admin Web intern/VPN
 Öffentlich:
 
 - allow TCP 443.
+- allow TCP 80 (nur für die Let's-Encrypt-Zertifikatsanfrage/-Erneuerung
+  und HTTP→HTTPS-Redirect durch Caddy, kein Anwendungsverkehr).
 - SSH zum Wartungsserver nur aus Adminnetz/VPN.
 - DB niemals öffentlich.
 - Admin-Web niemals pauschal öffentlich.
+- Bei Internet-Erreichbarkeit: Port 8443 extern **nicht** freigeben — der
+  ist im Referenz-Compose-Setup nur für LAN-only-Tests ohne Domain gedacht
+  (siehe `deployment/docker/docker-compose.yml`); Caddy auf 443 ist der
+  einzige vorgesehene öffentliche Zugang zum Agent-Gateway.
 
 ## 4. Reverse Proxy
 
@@ -53,6 +59,22 @@ Anforderungen:
 - TLS.
 - Security Header für Admin-Web.
 - getrennte Access Logs ohne Secrets.
+
+Referenzimplementierung: `deployment/docker/docker-compose.yml` bringt
+dafür einen `caddy`-Service mit (`deployment/docker/Caddyfile`) — holt und
+erneuert automatisch ein Let's-Encrypt-Zertifikat für die in `.env`
+gesetzte `WR_DOMAIN`, WebSocket-Upgrade läuft ohne Zusatzkonfiguration
+durch `reverse_proxy`, Timeouts sind für die langlebigen
+Control-Channel-Verbindungen bewusst deaktiviert. Nur der Agent-Gateway
+(8443intern/443extern) läuft über Caddy — das Admin-Web bleibt
+`127.0.0.1`-only und wird nie über Caddy geroutet.
+
+Damit der Server dem `X-Forwarded-For`-Header von Caddy dann auch traut
+(sonst würde die echte Client-IP im Audit-Log/Device-Tracking verloren
+gehen), muss `security.trusted_proxies` in `server.yaml` genau das
+Docker-Netz von Caddy benennen — im Referenz-Setup bereits vorkonfiguriert
+(`server.example.yaml`). Ohne einen echten Reverse Proxy davor muss diese
+Liste leer bleiben, siehe docs/CONFIGURATION.md.
 
 ## 5. Secrets
 

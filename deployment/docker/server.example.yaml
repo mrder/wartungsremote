@@ -4,6 +4,11 @@
 mode: production
 
 public:
+  # Must be the same domain as WR_DOMAIN in .env (used by Caddy for TLS) —
+  # this one is what the dashboard's "+ Add Device" install-command
+  # generator and self-update pipeline actually embed and report. The two
+  # are separate settings with no automatic link between them; keep them
+  # in sync by hand.
   base_url: https://remote.example.de
   listen: 0.0.0.0:8443
 
@@ -35,15 +40,13 @@ security:
   argon2_memory_kib: 19456
   argon2_iterations: 2
   argon2_parallelism: 1
-  # Only needed if a reverse proxy (nginx/Traefik/Cloudflare Tunnel) sits in
-  # front of wr-core, e.g. for its own TLS termination. Lists the exact
-  # IP(s)/CIDR of that proxy — nothing else — as the only caller(s) allowed
-  # to set X-Forwarded-For; every other caller's header is ignored and the
-  # raw TCP peer address is used instead. Leave empty (the default) for a
-  # direct deployment (including a Docker container with a plain port
-  # mapping and no reverse proxy) — Docker's own port-forwarding already
-  # preserves the real client IP, no proxy trust needed there.
-  trusted_proxies: []
+  # This reference docker-compose.yml fronts wr-core with a Caddy reverse
+  # proxy (TLS termination for your domain) on a fixed Docker network
+  # subnet — trust that subnet, and nothing else, to set X-Forwarded-For.
+  # If you remove Caddy and expose wr-core's port directly instead (e.g.
+  # LAN-only testing with no domain), set this back to [] — an untrusted
+  # X-Forwarded-For is worse than none, since any agent could forge it.
+  trusted_proxies: ["172.28.0.0/24"]
 
 metrics:
   raw_retention: 720h

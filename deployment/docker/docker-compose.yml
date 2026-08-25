@@ -1,18 +1,47 @@
 # Reference production layout per docs/DEPLOYMENT.md: reverse proxy exposes
 # only 443 publicly; admin web and postgres stay on the internal network.
 # Run from the repository root: docker compose -f deployment/docker/docker-compose.yml up -d
+#
+# Before first run: copy .env.example to .env next to this file and set
+# WR_DOMAIN to the domain you've pointed at this server (DNS A/AAAA record)
+# — Caddy uses it to request and auto-renew a Let's Encrypt certificate,
+# no manual cert handling needed.
 name: wartungsremote
 
 networks:
   internal:
     internal: true
+  # Fixed subnet so security.trusted_proxies in server.example.yaml can
+  # name it precisely — Caddy is the only thing on this network entitled
+  # to set X-Forwarded-For for wr-core.
   public:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
 
 volumes:
   postgres_data:
   core_secrets:
+  caddy_data:
+  caddy_config:
 
 services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    networks: [public]
+    depends_on: [wr-core]
+    environment:
+      WR_DOMAIN: ${WR_DOMAIN:?Set WR_DOMAIN in deployment/docker/.env to your server's public domain}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -44,15 +73,21 @@ services:
       WR_DATABASE_URL_FILE: /run/secrets/database_url
       WR_SESSION_PEPPER_FILE: /run/secrets/session_pepper
       WR_TOTP_ENCRYPTION_KEY_FILE: /run/secrets/totp_key
+      WR_RELEASE_PUBLIC_KEY_FILE: /run/secrets/release_public_key
     secrets:
       - database_url
       - session_pepper
       - totp_key
+      - release_public_key
     volumes:
-      - ./server.example.yaml:/app/config/server.yaml:ro
+      - ./server.yaml:/app/config/server.yaml:ro
     ports:
-      # Public agent gateway. Bind to a specific interface in production
-      # instead of publishing on all interfaces, per docs/DEPLOYMENT.md §3.
+      # Public agent gateway. Caddy is the intended internet-facing path
+      # (443, TLS) — this direct mapping is kept for LAN-only testing
+      # without a domain (e.g. agents on the same network with no TLS).
+      # If this server is reachable from the internet, firewall this port
+      # off externally per docs/DEPLOYMENT.md §3 and let Caddy be the only
+      # public entry point.
       - "8443:8443"
       # Admin web: intentionally bound to loopback only. Reach it via SSH
       # tunnel or your management VPN, never expose this port publicly.
@@ -67,3 +102,10 @@ secrets:
     file: ./secrets/session_pepper.bin
   totp_key:
     file: ./secrets/totp_key.bin
+  # Not actually secret (it's a public key) — mounted the same way purely
+  # for consistent file-based config. This is the trust anchor for agent
+  # self-updates: only release submissions signed by the matching offline
+  # private key (never checked into this repo) are ever accepted. See
+  # keys/README.md.
+  release_public_key:
+    file: ../../keys/release.pub

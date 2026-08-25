@@ -5,6 +5,32 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Docker Compose reference deployment: TLS/domain was actually missing
+
+- Found while preparing the Docker+GitHub deployment path: the shipped
+  `deployment/docker/docker-compose.yml` never had anything doing TLS
+  termination — `docs/DEPLOYMENT.md` §4 documented reverse-proxy/TLS
+  requirements, but no such component existed in the stack itself, so
+  `docker compose up` alone could never make a real domain reachable
+  over HTTPS.
+- Added a `caddy` service (`deployment/docker/Caddyfile`) fronting only
+  the agent gateway — automatic Let's Encrypt cert for `WR_DOMAIN`
+  (`.env`, see new `.env.example`), zero manual certificate handling,
+  WebSocket upgrade works out of the box via `reverse_proxy`, proxy
+  timeouts disabled for the long-lived control-channel connections. The
+  admin web stays loopback-only and is never routed through Caddy.
+- Gave the `public` Docker network a fixed subnet so the new
+  `security.trusted_proxies` (see above) can name Caddy precisely in
+  `server.example.yaml` — without it, X-Forwarded-For from Caddy itself
+  would otherwise be correctly-but-unhelpfully ignored post-fix.
+- Also found: `docker-compose.yml` mounted `server.example.yaml`
+  straight into the container as the live config, and never wired
+  `WR_RELEASE_PUBLIC_KEY_FILE` at all — meaning publishing any signed
+  agent release through the dashboard would always fail with an empty
+  trust key in this reference deployment. Fixed by mounting a real
+  `server.yaml` (copied from the example, gitignored) instead, and by
+  wiring `keys/release.pub` in as the `release_public_key` secret.
+
 ### Security fix: X-Forwarded-For was trusted unconditionally
 
 - `clientIP()` (used for every device IP-history entry and every

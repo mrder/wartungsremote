@@ -235,14 +235,25 @@ export WR_RELEASE_PUBLIC_KEY_FILE=/path/to/release.pub
 
 ## Docker Compose deployment
 
+This is the recommended way to run the server for real use (see
+"Installation order" above). It brings its own reverse proxy (Caddy) that
+automatically gets and renews a Let's Encrypt TLS certificate for your
+domain — no manual certificate handling needed, just DNS pointed at the
+server:
+
 ```bash
-./scripts/generate-docker-secrets.sh      # or .ps1 on Windows
-docker compose -f deployment/docker/docker-compose.yml up -d
+cd deployment/docker
+cp .env.example .env
+# edit .env: set WR_DOMAIN to the domain you've pointed at this server
+cp server.example.yaml server.yaml
+# edit server.yaml: public.base_url must be https://<the same WR_DOMAIN>
+../../scripts/generate-docker-secrets.sh      # or .ps1 on Windows
+docker compose up -d
 ```
 
 The admin web port is bound to `127.0.0.1` only by design — reach it via SSH
 tunnel or your management VPN, never expose it publicly (`docs/DEPLOYMENT.md`
-§2-3, §10).
+§2-3, §10). Only the agent gateway is fronted by Caddy on 443.
 
 ## Tests
 
