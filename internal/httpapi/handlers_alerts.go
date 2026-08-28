@@ -219,3 +219,31 @@ func (h *handlers) handleResolveAlert(w http.ResponseWriter, r *http.Request) {
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"state": "ok"}, nil)
 }
+
+func (h *handlers) handleDeleteAlert(w http.ResponseWriter, r *http.Request) {
+	grants := authpkg.GrantsFromContext(r.Context())
+	if !authpkg.HasAnyGrant(grants, authpkg.PermAlertManage) {
+		writeErr(w, http.StatusForbidden, "permission_denied", "Not permitted")
+		return
+	}
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_request", "invalid alert id")
+		return
+	}
+	if err := h.alerts.Delete(r.Context(), id); err != nil {
+		if err == alerting.ErrNotFound {
+			writeErr(w, http.StatusNotFound, "not_found", "Alert not found")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to delete alert")
+		return
+	}
+	user, _ := authpkg.UserFromContext(r.Context())
+	_ = h.audit.Record(r.Context(), audit.Event{
+		ActorType: audit.ActorUser, ActorID: &user.ID,
+		EventType: "alert.deleted", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
+		Metadata: map[string]any{"alert_id": id},
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"state": "ok"}, nil)
+}

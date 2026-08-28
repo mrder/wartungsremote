@@ -16,6 +16,7 @@ import (
 
 	"wartungsremote/internal/agentrelease"
 	"wartungsremote/internal/alerting"
+	"wartungsremote/internal/appsettings"
 	"wartungsremote/internal/audit"
 	"wartungsremote/internal/auth"
 	"wartungsremote/internal/config"
@@ -117,7 +118,8 @@ func NewRouter(deps Dependencies) (*Router, error) {
 		}
 	}
 
-	go device.RunMetricsRetentionSweeper(hubCtx, devices, cfg.Metrics.RawRetention, cfg.Metrics.HourlyRetention, 10*time.Minute)
+	settingsRepo := appsettings.NewRepo(deps.Pool)
+	go device.RunMetricsRetentionSweeper(hubCtx, devices, settingsRepo, cfg.Metrics.RawRetention, cfg.Metrics.HourlyRetention, 10*time.Minute)
 
 	alertsRepo := alerting.NewRepo(deps.Pool)
 	alertEngine := alerting.NewEngine(alertsRepo, devices, hub, deps.Audit)
@@ -192,6 +194,7 @@ func NewRouter(deps Dependencies) (*Router, error) {
 		customers:      customers,
 		alerts:         alertsRepo,
 		releases:       releasesRepo,
+		settings:       settingsRepo,
 		help:           helpSections,
 	}
 
@@ -270,8 +273,11 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	protected.HandleFunc("DELETE /api/v1/alert-rules/{id}", h.handleDeleteAlertRule)
 	protected.HandleFunc("GET /api/v1/alerts", h.handleListAlerts)
 	protected.HandleFunc("GET /api/v1/alerts/open-count", h.handleAlertsOpenCount)
+	protected.HandleFunc("GET /api/v1/settings/retention", h.handleGetRetentionSettings)
+	protected.HandleFunc("PATCH /api/v1/settings/retention", h.handleSetRetentionSettings)
 	protected.HandleFunc("POST /api/v1/alerts/{id}/acknowledge", h.handleAcknowledgeAlert)
 	protected.HandleFunc("POST /api/v1/alerts/{id}/resolve", h.handleResolveAlert)
+	protected.HandleFunc("DELETE /api/v1/alerts/{id}", h.handleDeleteAlert)
 
 	protected.HandleFunc("GET /api/v1/agent/releases", h.handleListReleases)
 	protected.HandleFunc("POST /api/v1/agent/releases", h.handleCreateRelease)

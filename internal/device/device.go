@@ -371,15 +371,26 @@ func (r *Repo) RecentIPHistory(ctx context.Context, id uuid.UUID, since time.Dur
 	return out, rows.Err()
 }
 
-func (r *Repo) RecordMetrics(ctx context.Context, id uuid.UUID, cpuPercent float64, memUsed, memTotal uint64, filesystems any, uptimeSeconds int64) error {
+func (r *Repo) RecordMetrics(ctx context.Context, id uuid.UUID, cpuPercent float64, memUsed, memTotal uint64, filesystems []protocol.FilesystemUsage, uptimeSeconds int64) error {
 	fsJSON, err := json.Marshal(filesystems)
 	if err != nil {
 		return fmt.Errorf("device: marshal filesystems: %w", err)
 	}
+	// Aggregated across non-removable filesystems only — a full USB stick
+	// shouldn't move the "disk usage" trend line any more than it should
+	// trip a health alert (see FilesystemUsage.Removable).
+	var diskUsed, diskTotal uint64
+	for _, fs := range filesystems {
+		if fs.Removable {
+			continue
+		}
+		diskUsed += fs.UsedBytes
+		diskTotal += fs.TotalBytes
+	}
 	_, err = r.pool.Exec(ctx, `
-		INSERT INTO device_metrics (device_id, cpu_percent, memory_used_bytes, memory_total_bytes, filesystems, uptime_seconds)
-		VALUES ($1,$2,$3,$4,$5,$6)
-	`, id, cpuPercent, memUsed, memTotal, fsJSON, uptimeSeconds)
+		INSERT INTO device_metrics (device_id, cpu_percent, memory_used_bytes, memory_total_bytes, filesystems, uptime_seconds, disk_used_bytes, disk_total_bytes)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+	`, id, cpuPercent, memUsed, memTotal, fsJSON, uptimeSeconds, int64(diskUsed), int64(diskTotal))
 	if err != nil {
 		return fmt.Errorf("device: record metrics: %w", err)
 	}
@@ -442,12 +453,14 @@ func (r *Repo) SetCapabilities(ctx context.Context, id uuid.UUID, capabilities [
 }
 
 type MetricsPoint struct {
-	ObservedAt        time.Time
-	CPUPercent        float64
-	MemoryUsedBytes   int64
-	MemoryTotalBytes  int64
-	UptimeSeconds     int64
-	Filesystems       []protocol.FilesystemUsage
+	ObservedAt       time.Time
+	CPUPercent       float64
+	MemoryUsedBytes  int64
+	MemoryTotalBytes int64
+	UptimeSeconds    int64
+	DiskUsedBytes    int64
+	DiskTotalBytes   int64
+	Filesystems      []protocol.FilesystemUsage
 }
 
 // LatestMetrics returns the single most recent metrics row, including
@@ -474,7 +487,7 @@ func (r *Repo) RecentMetrics(ctx context.Context, id uuid.UUID, from, to time.Ti
 		limit = 500
 	}
 	rows, err := r.pool.Query(ctx, `
-		SELECT observed_at, COALESCE(cpu_percent,0), COALESCE(memory_used_bytes,0), COALESCE(memory_total_bytes,0), COALESCE(uptime_seconds,0)
+		SELECT observed_at, COALESCE(cpu_percent,0), COALESCE(memory_used_bytes,0), COALESCE(memory_total_bytes,0), COALESCE(uptime_seconds,0), COALESCE(disk_used_bytes,0), COALESCE(disk_total_bytes,0)
 		FROM device_metrics
 		WHERE device_id = $1 AND observed_at BETWEEN $2 AND $3
 		ORDER BY observed_at DESC
@@ -488,7 +501,7 @@ func (r *Repo) RecentMetrics(ctx context.Context, id uuid.UUID, from, to time.Ti
 	var out []MetricsPoint
 	for rows.Next() {
 		var p MetricsPoint
-		if err := rows.Scan(&p.ObservedAt, &p.CPUPercent, &p.MemoryUsedBytes, &p.MemoryTotalBytes, &p.UptimeSeconds); err != nil {
+		if err := rows.Scan(&p.ObservedAt, &p.CPUPercent, &p.MemoryUsedBytes, &p.MemoryTotalBytes, &p.UptimeSeconds, &p.DiskUsedBytes, &p.DiskTotalBytes); err != nil {
 			return nil, fmt.Errorf("device: scan metrics point: %w", err)
 		}
 		out = append(out, p)
@@ -503,7 +516,7 @@ func (r *Repo) HourlyMetrics(ctx context.Context, id uuid.UUID, from, to time.Ti
 		limit = 500
 	}
 	rows, err := r.pool.Query(ctx, `
-		SELECT bucket_start, COALESCE(avg_cpu_percent,0), COALESCE(avg_memory_used_bytes,0), COALESCE(avg_memory_total_bytes,0)
+		SELECT bucket_start, COALESCE(avg_cpu_percent,0), COALESCE(avg_memory_used_bytes,0), COALESCE(avg_memory_total_bytes,0), COALESCE(avg_disk_used_bytes,0), COALESCE(avg_disk_total_bytes,0)
 		FROM device_metrics_hourly
 		WHERE device_id = $1 AND bucket_start BETWEEN $2 AND $3
 		ORDER BY bucket_start DESC
@@ -517,7 +530,7 @@ func (r *Repo) HourlyMetrics(ctx context.Context, id uuid.UUID, from, to time.Ti
 	var out []MetricsPoint
 	for rows.Next() {
 		var p MetricsPoint
-		if err := rows.Scan(&p.ObservedAt, &p.CPUPercent, &p.MemoryUsedBytes, &p.MemoryTotalBytes); err != nil {
+		if err := rows.Scan(&p.ObservedAt, &p.CPUPercent, &p.MemoryUsedBytes, &p.MemoryTotalBytes, &p.DiskUsedBytes, &p.DiskTotalBytes); err != nil {
 			return nil, fmt.Errorf("device: scan hourly metrics point: %w", err)
 		}
 		out = append(out, p)
@@ -531,9 +544,9 @@ func (r *Repo) HourlyMetrics(ctx context.Context, id uuid.UUID, from, to time.Ti
 // sweep tick rather than tracking which hours were already rolled up.
 func (r *Repo) RollupHourlyMetrics(ctx context.Context) error {
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO device_metrics_hourly (device_id, bucket_start, avg_cpu_percent, avg_memory_used_bytes, avg_memory_total_bytes, sample_count)
+		INSERT INTO device_metrics_hourly (device_id, bucket_start, avg_cpu_percent, avg_memory_used_bytes, avg_memory_total_bytes, avg_disk_used_bytes, avg_disk_total_bytes, sample_count)
 		SELECT device_id, date_trunc('hour', observed_at) AS bucket_start,
-		       avg(cpu_percent), avg(memory_used_bytes)::bigint, avg(memory_total_bytes)::bigint, count(*)
+		       avg(cpu_percent), avg(memory_used_bytes)::bigint, avg(memory_total_bytes)::bigint, avg(disk_used_bytes)::bigint, avg(disk_total_bytes)::bigint, count(*)
 		FROM device_metrics
 		WHERE observed_at < date_trunc('hour', now())
 		GROUP BY device_id, date_trunc('hour', observed_at)
@@ -541,6 +554,8 @@ func (r *Repo) RollupHourlyMetrics(ctx context.Context) error {
 			avg_cpu_percent = EXCLUDED.avg_cpu_percent,
 			avg_memory_used_bytes = EXCLUDED.avg_memory_used_bytes,
 			avg_memory_total_bytes = EXCLUDED.avg_memory_total_bytes,
+			avg_disk_used_bytes = EXCLUDED.avg_disk_used_bytes,
+			avg_disk_total_bytes = EXCLUDED.avg_disk_total_bytes,
 			sample_count = EXCLUDED.sample_count
 	`)
 	if err != nil {

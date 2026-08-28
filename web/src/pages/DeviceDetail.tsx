@@ -19,7 +19,7 @@ export default function DeviceDetail() {
   const [device, setDevice] = useState<Device | null>(null)
   const [tab, setTab] = useState<Tab>('overview')
   const [audit, setAudit] = useState<AuditEntry[]>([])
-  const [metrics, setMetrics] = useState<Array<{ observed_at: string; cpu_percent: number; memory_used_bytes: number; memory_total_bytes: number }>>([])
+  const [metrics, setMetrics] = useState<Array<{ observed_at: string; cpu_percent: number; memory_used_bytes: number; memory_total_bytes: number; disk_used_bytes: number; disk_total_bytes: number }>>([])
   const [resolution, setResolution] = useState<'raw' | 'hourly'>('raw')
   const [maintenanceHistory, setMaintenanceHistory] = useState<MaintenanceSession[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -213,17 +213,26 @@ export default function DeviceDetail() {
             unit=" GB"
             points={metrics.map((m) => ({ t: new Date(m.observed_at).getTime(), v: m.memory_used_bytes / 1e9 }))}
           />
+          <MetricsChart
+            title="Disk used"
+            unit="%"
+            max={100}
+            points={metrics
+              .filter((m) => m.disk_total_bytes > 0)
+              .map((m) => ({ t: new Date(m.observed_at).getTime(), v: (m.disk_used_bytes / m.disk_total_bytes) * 100 }))}
+          />
           <table className="device-table">
-            <thead><tr><th>Time</th><th>CPU %</th><th>RAM used/total</th></tr></thead>
+            <thead><tr><th>Time</th><th>CPU %</th><th>RAM used/total</th><th>Disk used/total</th></tr></thead>
             <tbody>
               {metrics.map((m, i) => (
                 <tr key={i}>
                   <td>{new Date(m.observed_at).toLocaleString()}</td>
                   <td>{m.cpu_percent.toFixed(1)}%</td>
                   <td>{(m.memory_used_bytes / 1e9).toFixed(1)} / {(m.memory_total_bytes / 1e9).toFixed(1)} GB</td>
+                  <td>{(m.disk_used_bytes / 1e9).toFixed(1)} / {(m.disk_total_bytes / 1e9).toFixed(1)} GB</td>
                 </tr>
               ))}
-              {metrics.length === 0 && <tr><td colSpan={3}>No metrics yet.</td></tr>}
+              {metrics.length === 0 && <tr><td colSpan={4}>No metrics yet.</td></tr>}
             </tbody>
           </table>
         </div>

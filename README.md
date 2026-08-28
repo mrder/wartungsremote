@@ -32,7 +32,8 @@ Server starts
   -> Service management (systemd / Windows SCM)
   -> Process listing and termination
   -> Log access (journalctl / Windows Event Log) with query/level/time filters
-  -> Monitoring history: hourly downsampling, configurable retention, CPU/RAM charts
+  -> Monitoring history: hourly downsampling, dashboard-adjustable retention
+     (Settings page, takes effect without a restart), CPU/RAM/disk charts
   -> Alerting: configurable rules (offline/CPU/RAM/disk/service/agent version),
      scoped to global/customer/group/device, with acknowledge/resolve and audit
   -> Signed agent self-updates: offline Ed25519 release signing, server- and
@@ -52,12 +53,19 @@ Terminal/tunnel/file/service/process sessions are also cleaned up correctly
 when the agent disconnects mid-session (state -> `interrupted`, browser
 socket closed) rather than hanging until their own expiry.
 
-Not yet implemented: disk/network monitoring history charts, alert
-notification channels (email/ntfy/Telegram/webhooks/ioBroker), an audit
-hash-chain, and context links from dashboard error messages to help pages —
-see `docs/TODO.md` for the full phase-by-phase plan. `docs/TODO.md` is only
-checked off for items genuinely complete (code + tests/live verification +
-audit + docs), not partially started ones.
+Disk history charts are code-complete and build/typecheck-verified, but not
+yet live-verified end to end (the local dev database was unreachable when
+this was built — re-verify against a real running stack before relying on
+it). Not yet implemented at all: network monitoring history charts — the
+agent doesn't currently collect network throughput data on the wire, so
+this needs an agent-side change (both platforms) and a new signed release
+before any data would even start flowing, not just a chart. Also not yet
+implemented: alert notification channels (email/ntfy/Telegram/webhooks/
+ioBroker), an audit hash-chain, and context links from dashboard error
+messages to help pages — see `docs/TODO.md` for the full phase-by-phase
+plan. `docs/TODO.md` is only checked off for items genuinely complete
+(code + tests/live verification + audit + docs), not partially started
+ones.
 
 ## Repository layout
 
@@ -274,6 +282,13 @@ ssh -L 9080:127.0.0.1:9080 you@your-server
 Only the agent gateway is fronted by Caddy on 443 — that's the one thing
 meant to be reachable from the internet.
 
+Set up automatic backups (database + config + secrets, encrypted,
+configurable retention/schedule — see `docs/DEPLOYMENT.md` §6):
+
+```bash
+sudo ../../scripts/install-backup-cron.sh --schedule "15 3 * * *" --retention-days 14
+```
+
 ## Tests
 
 ```bash
@@ -306,4 +321,10 @@ LocalSystem — no separate decision needed there.
 
 ## License
 
-License model to be finalized (`docs/TODO.md` Phase 0).
+Source-available, not open source — see [`LICENSE`](LICENSE). You may run
+your own instance for your own devices; hosting it as a service for third
+parties needs separate permission.
+
+---
+
+Powered by [sonnyathome.online](https://sonnyathome.online)

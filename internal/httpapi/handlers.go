@@ -8,6 +8,7 @@ import (
 
 	"wartungsremote/internal/agentrelease"
 	"wartungsremote/internal/alerting"
+	"wartungsremote/internal/appsettings"
 	"wartungsremote/internal/audit"
 	"wartungsremote/internal/auth"
 	"wartungsremote/internal/config"
@@ -43,6 +44,7 @@ type handlers struct {
 	customers      *customer.Repo
 	alerts         *alerting.Repo
 	releases       *agentrelease.Repo
+	settings       *appsettings.Repo
 	help           []help.Section
 }
 

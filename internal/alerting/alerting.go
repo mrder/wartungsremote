@@ -230,3 +230,18 @@ func (r *Repo) Resolve(ctx context.Context, id uuid.UUID) error {
 	}
 	return nil
 }
+
+// Delete permanently removes an alert record. Alerts are otherwise kept
+// indefinitely (no automatic retention sweep, unlike raw/hourly metrics) —
+// this is the only way one goes away, and it's an explicit, audited user
+// action (docs/API.md), not a background cleanup.
+func (r *Repo) Delete(ctx context.Context, id uuid.UUID) error {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM alerts WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("alerting: delete: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

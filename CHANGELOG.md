@@ -5,6 +5,55 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added: disk history charts, dashboard-adjustable retention, alert deletion
+
+- Disk usage was already collected in every metrics sample
+  (`device_metrics.filesystems`) but never aggregated or charted. Added
+  `disk_used_bytes`/`disk_total_bytes` (summed across non-removable
+  filesystems, same treatment as health thresholds) to both the raw and
+  hourly-rollup tables, and a Disk chart next to CPU/RAM on the device
+  Monitoring tab. Network history is explicitly NOT included — the agent
+  doesn't collect network throughput at all currently, so that needs an
+  agent-side change and a new signed release, not just a chart.
+- Metrics retention (`raw_retention`/`hourly_retention`) was previously
+  only a static `server.yaml` value read once at startup. Added
+  `internal/appsettings` (a small DB-backed key/value store) and a new
+  Settings page (permission: `system.settings`, already seeded for
+  super_admin but never wired to anything until now) so retention can be
+  changed from the dashboard and takes effect on the next sweep tick, no
+  restart needed.
+- Alerts could be acknowledged/resolved but never deleted — they're kept
+  indefinitely by design (no retention sweep), so acknowledge/resolve was
+  the only way to make one go away permanently. Added `DELETE
+  /api/v1/alerts/{id}` (audited) and a Delete button.
+- Confirmed while investigating: switching a device between the beta and
+  stable channel already worked with no code change needed — there was
+  never a version-ordering/anti-rollback check anywhere, only signature
+  verification, so picking "stable" after a bad beta build already just
+  installs whatever's currently tagged stable, newer or not.
+- New migration `0006_disk_metrics_and_settings.sql`. Code builds/tests/
+  typechecks clean but this batch has NOT been live-verified end to end
+  (local dev Postgres was unreachable when this was built) — verify
+  against a real running stack before relying on it.
+
+### Added: configurable backup cron, CI, license
+
+- `scripts/backup-server.sh` + `scripts/install-backup-cron.sh`: dumps the
+  Docker Compose Postgres DB plus config/secrets into one archive,
+  optional AES-256 encryption, configurable retention (prunes old
+  archives automatically) and cron schedule — nothing hardcoded, all
+  flags/env vars. Re-running the installer replaces its own crontab line
+  instead of duplicating it.
+- `.github/workflows/ci.yml`: build/vet/unit-tests/integration-tests (Go)
+  and typecheck/build (web) on every push/PR, plus a `docker compose
+  config` validation step. Deliberately does NOT sign or publish agent
+  releases — the signing key stays offline per the existing design
+  (README "Signing agent releases"); CI never sees it.
+- Added `LICENSE` (source-available: free to run your own instance,
+  commercial hosting/resale needs separate permission — not an
+  OSI-approved open source license) and a "Powered by sonnyathome.online"
+  footer on every dashboard page and in the README.
+
 ### Docker Compose: the dashboard itself was never actually servable
 
 - `docs/DEPLOYMENT.md`'s own recommended layout lists a `wr-web`

@@ -97,6 +97,7 @@ export default function DeviceList() {
           <Link to="/customers">Customers</Link>
           {user?.permissions.includes('agent.update') && <Link to="/releases">Releases</Link>}
           {user?.permissions.includes('user.manage') && <Link to="/users">Users</Link>}
+          {user?.permissions.includes('system.settings') && <Link to="/settings">Settings</Link>}
           <Link to="/help">Help</Link>
           <AlertsBadge />
           <span>{user?.username}</span>

@@ -71,6 +71,15 @@ export default function Alerts() {
     }
   }
 
+  async function deleteAlert(id: string) {
+    try {
+      await AlertApi.delete(id)
+      loadAlerts()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to delete alert')
+    }
+  }
+
   async function toggleRule(id: string, enabled: boolean) {
     try {
       await AlertApi.setRuleEnabled(id, enabled)
@@ -161,6 +170,7 @@ export default function Alerts() {
               <td>
                 {canManage && a.State === 'open' && <button onClick={() => acknowledge(a.ID)}>Acknowledge</button>}
                 {canManage && a.State !== 'resolved' && <button onClick={() => resolve(a.ID)}>Resolve</button>}
+                {canManage && <button onClick={() => deleteAlert(a.ID)}>Delete</button>}
               </td>
             </tr>
           ))}

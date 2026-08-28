@@ -158,7 +158,7 @@ export const DeviceApi = {
   statusRequest: (id: string) => api.post(`/devices/${id}/status-request`),
   audit: (id: string) => api.get<AuditEntry[]>(`/devices/${id}/audit`),
   metrics: (id: string, resolution: 'raw' | 'hourly' = 'raw') =>
-    api.get<Array<{ observed_at: string; cpu_percent: number; memory_used_bytes: number; memory_total_bytes: number }>>(
+    api.get<Array<{ observed_at: string; cpu_percent: number; memory_used_bytes: number; memory_total_bytes: number; disk_used_bytes: number; disk_total_bytes: number }>>(
       `/devices/${id}/metrics?resolution=${resolution}`
     ),
   patch: (id: string, body: { display_name?: string; customer_id?: string | null; group_id?: string | null; tags?: string[] }) =>
@@ -288,6 +288,7 @@ export const AlertApi = {
   openCount: () => api.get<{ open_count: number }>('/alerts/open-count'),
   acknowledge: (id: string) => api.post(`/alerts/${id}/acknowledge`),
   resolve: (id: string) => api.post(`/alerts/${id}/resolve`),
+  delete: (id: string) => api.del(`/alerts/${id}`),
 }
 
 export interface AgentRelease {
@@ -316,6 +317,12 @@ export const ReleaseApi = {
 
 export const ReauthApi = {
   reauth: (password: string, code: string) => api.post<{ reauth_id: string }>('/auth/reauth', { password, code }),
+}
+
+export const SettingsApi = {
+  getRetention: () => api.get<{ raw_retention_hours: number; hourly_retention_hours: number }>('/settings/retention'),
+  setRetention: (rawRetentionHours: number, hourlyRetentionHours: number) =>
+    api.patch('/settings/retention', { raw_retention_hours: rawRetentionHours, hourly_retention_hours: hourlyRetentionHours }),
 }
 
 // --- Services / Processes ---------------------------------------------------

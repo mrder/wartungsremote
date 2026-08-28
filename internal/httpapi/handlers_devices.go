@@ -266,11 +266,13 @@ func (h *handlers) handleDeviceMetrics(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0, len(points))
 	for _, p := range points {
 		out = append(out, map[string]any{
-			"observed_at":         p.ObservedAt,
-			"cpu_percent":         p.CPUPercent,
-			"memory_used_bytes":   p.MemoryUsedBytes,
-			"memory_total_bytes":  p.MemoryTotalBytes,
-			"uptime_seconds":      p.UptimeSeconds,
+			"observed_at":        p.ObservedAt,
+			"cpu_percent":        p.CPUPercent,
+			"memory_used_bytes":  p.MemoryUsedBytes,
+			"memory_total_bytes": p.MemoryTotalBytes,
+			"uptime_seconds":     p.UptimeSeconds,
+			"disk_used_bytes":    p.DiskUsedBytes,
+			"disk_total_bytes":   p.DiskTotalBytes,
 		})
 	}
 	writeJSON(w, http.StatusOK, out, nil)
