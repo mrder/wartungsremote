@@ -3,6 +3,7 @@ package alerting
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"wartungsremote/internal/controlhub"
 	"wartungsremote/internal/device"
 	"wartungsremote/internal/monitoring"
+	"wartungsremote/internal/notify"
 	"wartungsremote/internal/platform"
 	"wartungsremote/internal/protocol"
 )
@@ -18,14 +20,36 @@ import (
 const serviceCheckTimeout = 5 * time.Second
 
 type Engine struct {
-	rules   *Repo
-	devices *device.Repo
-	hub     *controlhub.Hub
-	audit   *audit.Logger
+	rules    *Repo
+	devices  *device.Repo
+	hub      *controlhub.Hub
+	audit    *audit.Logger
+	telegram *notify.TelegramRepo // nil-safe: notifications are simply off until configured
 }
 
-func NewEngine(rules *Repo, devices *device.Repo, hub *controlhub.Hub, auditLogger *audit.Logger) *Engine {
-	return &Engine{rules: rules, devices: devices, hub: hub, audit: auditLogger}
+func NewEngine(rules *Repo, devices *device.Repo, hub *controlhub.Hub, auditLogger *audit.Logger, telegram *notify.TelegramRepo) *Engine {
+	return &Engine{rules: rules, devices: devices, hub: hub, audit: auditLogger, telegram: telegram}
+}
+
+// notifyOpened best-effort notifies about a newly-opened alert. Never
+// blocks alert evaluation on a Telegram outage — logged, not surfaced as
+// an evaluation failure, and skipped silently (not even logged) if no bot
+// is configured at all, since that's just the normal "notifications off"
+// state.
+func (e *Engine) notifyOpened(ctx context.Context, d device.Device, severity, summary string) {
+	if e.telegram == nil {
+		return
+	}
+	icon := "🟡"
+	if severity == "critical" {
+		icon = "🔴"
+	}
+	text := fmt.Sprintf("%s WartungsRemote alert\nDevice: %s\n%s", icon, d.DisplayName, summary)
+	if err := e.telegram.SendMessage(ctx, text); err != nil {
+		if !errors.Is(err, notify.ErrNotConfigured) {
+			slog.Error("failed to send telegram alert notification", "device_id", d.ID, "error", err)
+		}
+	}
 }
 
 // Evaluate runs every enabled rule against every device in its scope,
@@ -58,12 +82,15 @@ func (e *Engine) Evaluate(ctx context.Context) error {
 					slog.Error("failed to open alert", "error", err)
 					continue
 				}
-				if opened && e.audit != nil {
-					_ = e.audit.Record(ctx, audit.Event{
-						ActorType: audit.ActorSystem, DeviceID: &d.ID,
-						EventType: "alert.opened", Result: audit.ResultSuccess,
-						Metadata: map[string]any{"rule_type": rule.RuleType, "severity": severity, "summary": summary},
-					})
+				if opened {
+					if e.audit != nil {
+						_ = e.audit.Record(ctx, audit.Event{
+							ActorType: audit.ActorSystem, DeviceID: &d.ID,
+							EventType: "alert.opened", Result: audit.ResultSuccess,
+							Metadata: map[string]any{"rule_type": rule.RuleType, "severity": severity, "summary": summary},
+						})
+					}
+					e.notifyOpened(ctx, d, severity, summary)
 				}
 			} else {
 				resolved, err := e.rules.AutoResolveIfOpen(ctx, d.ID, rule.ID)

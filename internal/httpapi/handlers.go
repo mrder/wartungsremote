@@ -20,6 +20,7 @@ import (
 	"wartungsremote/internal/maintenance"
 	"wartungsremote/internal/monitoring"
 	"wartungsremote/internal/netutil"
+	"wartungsremote/internal/notify"
 	"wartungsremote/internal/relay"
 	"wartungsremote/internal/remotesession"
 	"wartungsremote/internal/support"
@@ -47,6 +48,7 @@ type handlers struct {
 	releases       *agentrelease.Repo
 	settings       *appsettings.Repo
 	support        *support.Repo
+	telegram       *notify.TelegramRepo
 	help           []help.Section
 }
 

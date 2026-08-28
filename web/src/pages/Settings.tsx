@@ -10,6 +10,14 @@ export default function Settings() {
   const [saved, setSaved] = useState(false)
   const [rotationSaved, setRotationSaved] = useState(false)
 
+  const [telegramConfigured, setTelegramConfigured] = useState(false)
+  const [telegramUpdatedAt, setTelegramUpdatedAt] = useState('')
+  const [botToken, setBotToken] = useState('')
+  const [chatId, setChatId] = useState('')
+  const [telegramSaved, setTelegramSaved] = useState(false)
+  const [telegramTestMsg, setTelegramTestMsg] = useState('')
+  const [telegramBusy, setTelegramBusy] = useState(false)
+
   async function load() {
     try {
       const s = await SettingsApi.getRetention()
@@ -21,6 +29,14 @@ export default function Settings() {
     try {
       const r = await SettingsApi.getSupportCredentialRotation()
       setRotationDays(String(r.rotation_days))
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to load settings')
+    }
+    try {
+      const t = await SettingsApi.getTelegram()
+      setTelegramConfigured(t.configured)
+      setTelegramUpdatedAt(t.updated_at)
+      setChatId(t.chat_id ?? '')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load settings')
     }
@@ -51,6 +67,35 @@ export default function Settings() {
       setRotationSaved(true)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to save settings')
+    }
+  }
+
+  async function saveTelegram(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    setTelegramSaved(false)
+    setTelegramTestMsg('')
+    try {
+      await SettingsApi.setTelegram(botToken, chatId)
+      setBotToken('')
+      setTelegramSaved(true)
+      load()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to save settings')
+    }
+  }
+
+  async function testTelegram() {
+    setError('')
+    setTelegramTestMsg('')
+    setTelegramBusy(true)
+    try {
+      await SettingsApi.testTelegram()
+      setTelegramTestMsg('Test message sent — check your Telegram chat.')
+    } catch (err) {
+      setTelegramTestMsg(err instanceof ApiError ? err.message : 'Failed to send test message')
+    } finally {
+      setTelegramBusy(false)
     }
   }
 
@@ -122,6 +167,53 @@ export default function Settings() {
           {' '}days (0 = disabled)
         </label>
         <button type="submit">Save</button>
+      </form>
+
+      <h3>Telegram alert notifications</h3>
+      <p>
+        Sends a Telegram message every time a new alert opens (docs/TODO.md lists email/ntfy/webhooks
+        as possible future channels — Telegram is the first one built). Setup:
+      </p>
+      <ol>
+        <li>In Telegram, message <strong>@BotFather</strong>, send <code>/newbot</code>, and follow the
+          prompts. It gives you a bot token like <code>123456:ABC-DEF1234...</code>.</li>
+        <li>Message your new bot directly (or add it to a group and mention it once) so it can see the chat.</li>
+        <li>Open <code>https://api.telegram.org/bot&lt;YOUR_TOKEN&gt;/getUpdates</code> in a browser
+          (replace <code>&lt;YOUR_TOKEN&gt;</code>) and find <code>"chat":{'{'}"id":...{'}'}</code> in the
+          response — that number is your chat ID.</li>
+        <li>Paste both below, save, then send a test message to confirm it works.</li>
+      </ol>
+      {telegramConfigured && (
+        <p>
+          Currently configured (chat ID <code>{chatId}</code>, last set{' '}
+          {telegramUpdatedAt ? new Date(telegramUpdatedAt).toLocaleString() : '-'}). Enter a new bot
+          token below only if you want to replace it.
+        </p>
+      )}
+      {telegramSaved && <p>Saved.</p>}
+      {telegramTestMsg && <p>{telegramTestMsg}</p>}
+      <form onSubmit={saveTelegram} className="toolbar" style={{ flexWrap: 'wrap' }}>
+        <input
+          type="password"
+          placeholder="Bot token"
+          value={botToken}
+          onChange={(e) => setBotToken(e.target.value)}
+          required
+          style={{ minWidth: 260 }}
+        />
+        <input
+          placeholder="Chat ID"
+          value={chatId}
+          onChange={(e) => setChatId(e.target.value)}
+          required
+          style={{ minWidth: 160 }}
+        />
+        <button type="submit">Save</button>
+        {telegramConfigured && (
+          <button type="button" onClick={testTelegram} disabled={telegramBusy}>
+            {telegramBusy ? 'Sending...' : 'Send test message'}
+          </button>
+        )}
       </form>
     </div>
   )

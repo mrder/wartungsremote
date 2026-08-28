@@ -28,6 +28,7 @@ import (
 	"wartungsremote/internal/maintenance"
 	"wartungsremote/internal/monitoring"
 	"wartungsremote/internal/netutil"
+	"wartungsremote/internal/notify"
 	"wartungsremote/internal/relay"
 	"wartungsremote/internal/remotesession"
 	"wartungsremote/internal/support"
@@ -122,8 +123,10 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	settingsRepo := appsettings.NewRepo(deps.Pool)
 	go device.RunMetricsRetentionSweeper(hubCtx, devices, settingsRepo, cfg.Metrics.RawRetention, cfg.Metrics.HourlyRetention, 10*time.Minute)
 
+	telegramRepo := notify.NewTelegramRepo(deps.Pool, deps.Config.Secrets.TOTPEncryptionKey)
+
 	alertsRepo := alerting.NewRepo(deps.Pool)
-	alertEngine := alerting.NewEngine(alertsRepo, devices, hub, deps.Audit)
+	alertEngine := alerting.NewEngine(alertsRepo, devices, hub, deps.Audit, telegramRepo)
 	go alerting.RunSweeper(hubCtx, alertEngine, time.Minute)
 
 	releasesRepo := agentrelease.NewRepo(deps.Pool)
@@ -201,6 +204,7 @@ func NewRouter(deps Dependencies) (*Router, error) {
 		releases:       releasesRepo,
 		settings:       settingsRepo,
 		support:        supportRepo,
+		telegram:       telegramRepo,
 		help:           helpSections,
 	}
 
@@ -288,6 +292,9 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	protected.HandleFunc("PATCH /api/v1/settings/retention", h.handleSetRetentionSettings)
 	protected.HandleFunc("GET /api/v1/settings/support-credential-rotation", h.handleGetSupportCredentialRotationSettings)
 	protected.HandleFunc("PATCH /api/v1/settings/support-credential-rotation", h.handleSetSupportCredentialRotationSettings)
+	protected.HandleFunc("GET /api/v1/settings/telegram", h.handleGetTelegramSettings)
+	protected.HandleFunc("PATCH /api/v1/settings/telegram", h.handleSetTelegramSettings)
+	protected.HandleFunc("POST /api/v1/settings/telegram/test", h.handleTestTelegramSettings)
 	protected.HandleFunc("POST /api/v1/alerts/{id}/acknowledge", h.handleAcknowledgeAlert)
 	protected.HandleFunc("POST /api/v1/alerts/{id}/resolve", h.handleResolveAlert)
 	protected.HandleFunc("DELETE /api/v1/alerts/{id}", h.handleDeleteAlert)

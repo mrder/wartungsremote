@@ -341,6 +341,9 @@ export const SettingsApi = {
   getSupportCredentialRotation: () => api.get<{ rotation_days: number }>('/settings/support-credential-rotation'),
   setSupportCredentialRotation: (rotationDays: number) =>
     api.patch('/settings/support-credential-rotation', { rotation_days: rotationDays }),
+  getTelegram: () => api.get<{ configured: boolean; chat_id: string; updated_at: string }>('/settings/telegram'),
+  setTelegram: (botToken: string, chatId: string) => api.patch('/settings/telegram', { bot_token: botToken, chat_id: chatId }),
+  testTelegram: () => api.post('/settings/telegram/test'),
 }
 
 // --- Services / Processes ---------------------------------------------------
