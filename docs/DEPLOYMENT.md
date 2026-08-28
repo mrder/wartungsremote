@@ -133,6 +133,26 @@ Backup verschlüsseln und Restore testen.
 
 Ohne Secret-Encryption-Key ist ein DB-Backup ggf. absichtlich nicht vollständig nutzbar; daher Key-Recovery separat planen.
 
+Referenzimplementierung für das Docker-Compose-Setup:
+`scripts/backup-server.sh` sichert DB-Dump + `server.yaml`/`.env` +
+`secrets/` in ein Archiv, optional AES-256-verschlüsselt
+(`--encrypt-passphrase-file`), mit konfigurierbarer Aufbewahrungsdauer
+(`--retention-days`, löscht ältere Archive automatisch). Nichts davon ist
+fest verdrahtet — Backup-Verzeichnis, Compose-Pfad, Verschlüsselung und
+Aufbewahrung sind alles Flags/Env-Variablen.
+
+```bash
+sudo ./scripts/install-backup-cron.sh \
+  --schedule "15 3 * * *" \
+  --backup-dir /var/backups/wartungsremote \
+  --retention-days 14
+  # optional: --encrypt-passphrase-file /pfad/zur/passphrase.txt
+```
+
+Erneutes Ausführen ersetzt den eigenen Cron-Eintrag statt einen zweiten
+anzulegen — Zeitplan/Einstellungen also einfach durch erneuten Aufruf
+ändern, oder direkt die generierte `<backup-dir>/backup.env` editieren.
+
 ## 7. Monitoring des Wartungsservers
 
 Eigene Checks:

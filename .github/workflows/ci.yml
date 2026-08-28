@@ -1,0 +1,72 @@
+# Build + test on every push/PR. Deliberately does NOT sign or publish
+# agent releases — release artifacts are signed offline with
+# cmd/wr-release-sign, and the private signing key never touches any
+# server, let alone CI (see README "Signing agent releases",
+# docs/AGENT.md §15). Publishing a release stays a manual, offline step.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wartungsremote
+          POSTGRES_PASSWORD: wartungsremote_test
+          POSTGRES_DB: wartungsremote_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U wartungsremote"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./... -count=1
+      - name: Integration tests (database-backed)
+        env:
+          WR_TEST_DATABASE_URL: postgres://wartungsremote:wartungsremote_test@localhost:5432/wartungsremote_test?sslmode=disable
+        run: go test ./tests/... -v
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx tsc -b
+      - run: npm run build
+
+  docker-compose-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate docker-compose.yml (config only, no build/run)
+        working-directory: deployment/docker
+        run: |
+          cp .env.example .env
+          cp server.example.yaml server.yaml
+          mkdir -p secrets
+          for f in db_password.txt database_url.txt session_pepper.bin totp_key.bin admin_password.txt; do
+            [ -f "secrets/$f" ] || echo -n "placeholder" > "secrets/$f"
+          done
+          docker compose config -q
