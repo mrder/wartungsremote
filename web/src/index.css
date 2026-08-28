@@ -357,3 +357,10 @@ table caption { caption-side: top; padding: var(--space-3) 0; font-size: 0.85rem
   text-align: center;
   display: inline-block;
 }
+
+.app-footer {
+  text-align: center;
+  padding: var(--space-5) var(--space-4);
+  font-size: 0.78rem;
+  color: var(--muted-soft, var(--muted));
+}

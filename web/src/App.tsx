@@ -7,6 +7,7 @@ import Customers from './pages/Customers'
 import Alerts from './pages/Alerts'
 import Releases from './pages/Releases'
 import Users from './pages/Users'
+import Settings from './pages/Settings'
 import Help from './pages/Help'
 
 function RequireAuth({ children }: { children: React.ReactElement }) {
@@ -25,6 +26,7 @@ function AppRoutes() {
       <Route path="/alerts" element={<RequireAuth><Alerts /></RequireAuth>} />
       <Route path="/releases" element={<RequireAuth><Releases /></RequireAuth>} />
       <Route path="/users" element={<RequireAuth><Users /></RequireAuth>} />
+      <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
       <Route path="/help" element={<RequireAuth><Help /></RequireAuth>} />
       <Route path="/help/:slug" element={<RequireAuth><Help /></RequireAuth>} />
       <Route path="/devices/:id" element={<RequireAuth><DeviceDetail /></RequireAuth>} />
@@ -32,10 +34,19 @@ function AppRoutes() {
   )
 }
 
+function Footer() {
+  return (
+    <footer className="app-footer">
+      Powered by <a href="https://sonnyathome.online" target="_blank" rel="noopener noreferrer">sonnyathome.online</a>
+    </footer>
+  )
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <AppRoutes />
+      <Footer />
     </AuthProvider>
   )
 }
