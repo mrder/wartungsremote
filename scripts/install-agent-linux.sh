@@ -46,11 +46,11 @@ fi
 install -d -o root -g root -m 0700 /etc/wartungsremote
 install -d -o root -g root -m 0700 /var/lib/wartungsremote
 install -d -o root -g root -m 0750 /var/log/wartungsremote
-# Not every distro ships /usr/local/bin pre-created (e.g. ZimaOS) — install
-# doesn't create missing parent directories on its own.
-install -d -o root -g root -m 0755 /usr/local/bin
 
-install -o root -g root -m 0755 "$BINARY_SRC" /usr/local/bin/wr-agent
+# Not /usr/local/bin: some distros (e.g. ZimaOS) ship a read-only root
+# filesystem where only a handful of persistent-state paths like this one
+# are actually writable — found live on a real ZimaOS install.
+install -o root -g root -m 0755 "$BINARY_SRC" /var/lib/wartungsremote/wr-agent
 
 if [[ ! -f /etc/wartungsremote/agent.yaml ]]; then
   cat > /etc/wartungsremote/agent.yaml <<EOF

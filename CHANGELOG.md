@@ -5,6 +5,17 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fix: native Linux installers assumed a writable /usr/local/bin
+
+- Found live installing on a real ZimaOS box: `install(1)` doesn't create
+  missing parent directories, and some distros (ZimaOS among them) ship a
+  read-only root filesystem where `/usr/local` isn't writable at all —
+  only specific persistent-state paths are. Moved the installed binary
+  for both `install-agent-linux.sh` (→ `/var/lib/wartungsremote/wr-agent`)
+  and `install-core-linux.sh` (→ `/var/lib/wartungsremote-core/wr-core`),
+  updated both systemd units' `ExecStart` and both uninstall scripts to
+  match. Native Windows installs are unaffected.
+
 ### Added: disk history charts, dashboard-adjustable retention, alert deletion
 
 - Disk usage was already collected in every metrics sample

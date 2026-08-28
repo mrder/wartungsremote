@@ -13,11 +13,11 @@ systemctl disable wartungsremote-core 2>/dev/null || true
 rm -f /etc/systemd/system/wartungsremote-core.service
 systemctl daemon-reload
 
-rm -f /usr/local/bin/wr-core
+rm -f /var/lib/wartungsremote-core/wr-core
 
 read -r -p "Remove configuration and secrets too (NOT the database)? [y/N] " confirm
 if [[ "${confirm,,}" == "y" ]]; then
-  rm -rf /etc/wartungsremote /var/log/wartungsremote-core
+  rm -rf /etc/wartungsremote /var/log/wartungsremote-core /var/lib/wartungsremote-core
 fi
 
 echo "wr-core uninstalled."

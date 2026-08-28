@@ -14,7 +14,7 @@ systemctl disable wartungsremote-agent 2>/dev/null || true
 rm -f /etc/systemd/system/wartungsremote-agent.service
 systemctl daemon-reload
 
-rm -f /usr/local/bin/wr-agent
+rm -f /var/lib/wartungsremote/wr-agent
 
 read -r -p "Remove configuration and stored device credential too? [y/N] " confirm
 if [[ "${confirm,,}" == "y" ]]; then

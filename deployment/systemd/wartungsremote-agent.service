@@ -7,7 +7,7 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/wr-agent --config /etc/wartungsremote/agent.yaml
+ExecStart=/var/lib/wartungsremote/wr-agent --config /etc/wartungsremote/agent.yaml
 Restart=always
 RestartSec=5
 

@@ -36,11 +36,12 @@ id -u wartungsremote-core >/dev/null 2>&1 || useradd --system --no-create-home -
 install -d -o wartungsremote-core -g wartungsremote-core -m 0750 /etc/wartungsremote
 install -d -o wartungsremote-core -g wartungsremote-core -m 0700 /etc/wartungsremote/secrets
 install -d -o wartungsremote-core -g wartungsremote-core -m 0750 /var/log/wartungsremote-core
-# Not every distro ships /usr/local/bin pre-created (e.g. ZimaOS) — install
-# doesn't create missing parent directories on its own.
-install -d -o root -g root -m 0755 /usr/local/bin
+install -d -o root -g root -m 0755 /var/lib/wartungsremote-core
 
-install -o root -g root -m 0755 "$BINARY_SRC" /usr/local/bin/wr-core
+# Not /usr/local/bin: some distros (e.g. ZimaOS) ship a read-only root
+# filesystem where only a handful of persistent-state paths like this one
+# are actually writable — found live on a real ZimaOS install (wr-agent).
+install -o root -g root -m 0755 "$BINARY_SRC" /var/lib/wartungsremote-core/wr-core
 
 if [[ ! -f /etc/wartungsremote/server.yaml ]]; then
   install -o wartungsremote-core -g wartungsremote-core -m 0640 \
@@ -71,4 +72,4 @@ systemctl restart wartungsremote-core
 echo "wr-core installed. Check status with: systemctl status wartungsremote-core"
 echo "Create the first super_admin with:"
 echo "  sudo -u wartungsremote-core WR_DATABASE_URL_FILE=/etc/wartungsremote/secrets/database_url \\"
-echo "    /usr/local/bin/wr-core createadmin --username admin --password-file <path> --config /etc/wartungsremote/server.yaml"
+echo "    /var/lib/wartungsremote-core/wr-core createadmin --username admin --password-file <path> --config /etc/wartungsremote/server.yaml"

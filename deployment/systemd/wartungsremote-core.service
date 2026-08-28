@@ -1,12 +1,12 @@
 [Unit]
 Description=WartungsRemote Core Server
-Documentation=https://github.com/<org>/wartungsremote
+Documentation=https://github.com/mrder/wartungsremote
 After=network-online.target postgresql.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/wr-core
+ExecStart=/var/lib/wartungsremote-core/wr-core
 Restart=always
 RestartSec=5
 User=wartungsremote-core
