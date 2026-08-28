@@ -117,6 +117,17 @@ type LogProvider interface {
 	QueryLogs(ctx context.Context, q LogQuery) ([]LogEntry, error)
 }
 
+// SupportAccountProvider creates (or resets the password of) the dedicated
+// local OS account used to log into the SSH/RDP tunnel this device
+// exposes — a separate login from our own Ed25519 device identity, needed
+// because the tunnel only forwards raw network traffic to the device's own
+// existing SSH/RDP service (docs/AGENT.md "Remote-support account"). The
+// generated password is returned once and never re-derivable — the server
+// is the only place it's subsequently stored (encrypted).
+type SupportAccountProvider interface {
+	EnsureSupportAccount(ctx context.Context) (username, password string, err error)
+}
+
 // Provider bundles all capabilities implemented for the current OS.
 type Provider interface {
 	InventoryProvider
@@ -126,6 +137,7 @@ type Provider interface {
 	ProcessProvider
 	FileProvider
 	LogProvider
+	SupportAccountProvider
 	// Capabilities lists the capability strings this platform build
 	// actually supports, reported in the control channel hello handshake.
 	Capabilities() []string

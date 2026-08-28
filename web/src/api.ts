@@ -255,6 +255,12 @@ export const TunnelApi = {
     api.post<TunnelCreated>(`/devices/${deviceId}/tunnels`, { target_type: targetType }),
 }
 
+export const SupportCredentialApi = {
+  get: (deviceId: string) =>
+    api.get<{ username: string; password: string; updated_at: string }>(`/devices/${deviceId}/support-credential`),
+  rotate: (deviceId: string) => api.post(`/devices/${deviceId}/support-credential/rotate`),
+}
+
 export interface AlertRule {
   ID: string
   ScopeType: 'global' | 'customer' | 'group' | 'device'

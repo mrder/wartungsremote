@@ -210,6 +210,24 @@ Response:
 
 ### DELETE `/tunnels/:id`
 
+### GET `/devices/:id/support-credential`
+
+Erfordert `remote.tunnel.ssh` oder `remote.tunnel.rdp`. Gibt das aktuelle
+Login für den dedizierten `remotewartung`-Account entschlüsselt zurück
+(docs/AGENT.md §12a). Jeder Aufruf wird auditiert
+(`support_credential.revealed`). `404`, falls das Gerät noch keinen Report
+gesendet hat.
+
+```json
+{"data": {"username":"remotewartung","password":"...","updated_at":"..."}}
+```
+
+### POST `/devices/:id/support-credential/rotate`
+
+Erfordert `remote.tunnel.ssh` oder `remote.tunnel.rdp`, Gerät muss online
+sein. Weist den Agenten an, ein neues Passwort zu setzen und zu melden;
+Antwort kommt asynchron über den Control-Channel, nicht in dieser Response.
+
 ## 10. Dateien
 
 ### GET `/devices/:id/files?path=...`

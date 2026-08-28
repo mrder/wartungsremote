@@ -77,4 +77,5 @@ const (
 	CmdFilesUpload     = "files.upload"
 	CmdLogsQuery       = "logs.query"
 	CmdAgentUpdate     = "agent.update"
+	CmdRotateSupportCredential = "support_credential.rotate"
 )

@@ -30,6 +30,7 @@ import (
 	"wartungsremote/internal/netutil"
 	"wartungsremote/internal/relay"
 	"wartungsremote/internal/remotesession"
+	"wartungsremote/internal/support"
 )
 
 type Dependencies struct {
@@ -128,6 +129,9 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	releasesRepo := agentrelease.NewRepo(deps.Pool)
 	hub.SetVersionBlockedChecker(releasesRepo.IsVersionBlocked)
 
+	supportRepo := support.NewRepo(deps.Pool, deps.Config.Secrets.TOTPEncryptionKey)
+	hub.SetSupportCredentialHandler(supportRepo.Upsert)
+
 	helpSections, err := help.Load(cfg.Help.ContentDir)
 	if err != nil {
 		slog.Warn("dashboard help content unavailable", "error", err)
@@ -195,6 +199,7 @@ func NewRouter(deps Dependencies) (*Router, error) {
 		alerts:         alertsRepo,
 		releases:       releasesRepo,
 		settings:       settingsRepo,
+		support:        supportRepo,
 		help:           helpSections,
 	}
 
@@ -273,6 +278,8 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	protected.HandleFunc("DELETE /api/v1/alert-rules/{id}", h.handleDeleteAlertRule)
 	protected.HandleFunc("GET /api/v1/alerts", h.handleListAlerts)
 	protected.HandleFunc("GET /api/v1/alerts/open-count", h.handleAlertsOpenCount)
+	protected.HandleFunc("GET /api/v1/devices/{id}/support-credential", h.handleGetSupportCredential)
+	protected.HandleFunc("POST /api/v1/devices/{id}/support-credential/rotate", h.handleRotateSupportCredential)
 	protected.HandleFunc("GET /api/v1/settings/retention", h.handleGetRetentionSettings)
 	protected.HandleFunc("PATCH /api/v1/settings/retention", h.handleSetRetentionSettings)
 	protected.HandleFunc("POST /api/v1/alerts/{id}/acknowledge", h.handleAcknowledgeAlert)

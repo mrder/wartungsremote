@@ -157,6 +157,44 @@ rdp_local => net.Dial("tcp", "127.0.0.1:3389")
 
 Keine API, die ungeprüft `host` und `port` aus Remoteinput übernimmt.
 
+## 12a. Remote-support account
+
+Der Tunnel (§12) reicht nur rohen Netzwerkverkehr an den bereits
+existierenden SSH-/RDP-Dienst des Geräts weiter — dessen Login ist von
+unserer eigenen Ed25519-Geräteidentität komplett getrennt. Ohne einen
+bekannten Account bräuchte man dafür also doch wieder die Zugangsdaten des
+Kunden.
+
+Deshalb legt der Agent bei der ersten erfolgreichen Verbindung einmalig
+einen dedizierten lokalen Account `remotewartung` an (nie der bestehende
+root-/Administrator-Account des Kunden — dessen Passwort wird nie
+verändert):
+
+- **Linux**: `useradd`, Passwort per `chpasswd`. Sudo-Rechte werden
+  best-effort über ein eigenes `/etc/sudoers.d/wartungsremote-support`
+  Drop-in vergeben (nicht über Gruppenzugehörigkeit, da `sudo`/`wheel`/`adm`
+  je nach Distribution unterschiedlich heißen) — falls `sudo` auf der
+  Distribution gar nicht installiert ist (z.B. minimale Appliance-Systeme),
+  funktioniert der SSH-Login trotzdem, nur ohne Rechteausweitung von dieser
+  Shell aus. Terminal (agent-eigenes Protokoll) hat davon unabhängig
+  ohnehin immer volle root-Rechte.
+- **Windows**: `net user` + Mitgliedschaft in `Administrators` (Admins
+  dürfen sich per RDP anmelden, keine separate "Remote Desktop Users"
+  Gruppe nötig).
+
+Das generierte Passwort wird einmalig über den Control-Channel gemeldet
+(`support_credential_report`, docs/PROTOCOL.md) und dort AES-256-GCM
+verschlüsselt gespeichert (`internal/support`, gleicher Schlüssel wie
+TOTP-Secrets) — der Server sieht es im Klartext nur bei einem expliziten,
+auditierten Dashboard-Reveal. Ein Admin mit `remote.tunnel.ssh` oder
+`remote.tunnel.rdp` kann das Passwort jederzeit über das Dashboard rotieren
+(`support_credential.rotate` Command); der Agent generiert dann ein neues
+Passwort, setzt es lokal und meldet es erneut.
+
+Provisionierung passiert genau einmal pro Installation (lokale
+Marker-Datei im DataDir), nicht bei jedem Reconnect — ein fehlgeschlagener
+Report wird beim nächsten Reconnect automatisch wiederholt.
+
 ## 13. Dateioperationen
 
 Agent definiert erlaubte Roots/Policy. V1 kann systemweiten Zugriff für privilegierte Adminwartung erlauben, muss aber Pfad-Escapes verhindern.

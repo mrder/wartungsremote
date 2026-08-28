@@ -37,6 +37,7 @@ const (
 	TypeProtocolError            = "protocol_error"
 	TypeControlChallenge         = "control_challenge"
 	TypeDeviceCommand            = "device_command"
+	TypeSupportCredentialReport  = "support_credential_report"
 )
 
 // Binary stream frame kinds, per docs/PROTOCOL.md §11.
@@ -197,6 +198,17 @@ type MetricsReportPayload struct {
 	Memory        MemoryUsage       `json:"memory"`
 	Filesystems   []FilesystemUsage `json:"filesystems"`
 	UptimeSeconds int64             `json:"uptime_seconds"`
+}
+
+// SupportCredentialReportPayload is sent once by the agent (over the
+// already-authenticated control channel — never a separate unauthenticated
+// call) after it provisions or rotates the local remote-support OS account
+// (docs/AGENT.md "Remote-support account"). The server encrypts Password
+// at rest and only ever decrypts it on an explicit, audited dashboard
+// reveal — see internal/support.
+type SupportCredentialReportPayload struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 // CommandResultPayload is a generic success/error response envelope.

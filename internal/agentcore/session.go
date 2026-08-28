@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -85,6 +87,9 @@ func runSession(ctx context.Context, serverURL, agentVersion string, identity Id
 
 	slog.Info("control channel established", "device_id", identity.DeviceID, "heartbeat_interval", heartbeatInterval)
 	onConnected()
+	if policy.SSHTunnel || policy.RDPTunnel {
+		go as.ensureSupportAccountProvisioned(ctx, provider)
+	}
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- as.readLoop(ctx) }()
@@ -115,6 +120,34 @@ func runSession(ctx context.Context, serverURL, agentVersion string, identity Id
 		case <-statusTicker.C:
 			as.sendMetrics(ctx)
 		}
+	}
+}
+
+// ensureSupportAccountProvisioned creates the remote-support OS account and
+// reports its credential exactly once (tracked by a local marker file, not
+// per-connection state, so a reconnect never re-triggers it) — see
+// docs/AGENT.md "Remote-support account". A failure here is retried on the
+// next reconnect: the marker is only written after the report is
+// successfully sent, and EnsureSupportAccount itself is idempotent (a
+// no-op re-creation, just a fresh password) if the account already exists.
+func (a *agentSession) ensureSupportAccountProvisioned(ctx context.Context, provider platform.Provider) {
+	marker := filepath.Join(a.dataDir, "support_account_provisioned")
+	if _, err := os.Stat(marker); err == nil {
+		return
+	}
+	username, password, err := provider.EnsureSupportAccount(ctx)
+	if err != nil {
+		slog.Error("failed to provision remote-support account", "error", err)
+		return
+	}
+	if err := a.writeEnvelope(ctx, protocol.TypeSupportCredentialReport, nil, protocol.SupportCredentialReportPayload{
+		Username: username, Password: password,
+	}); err != nil {
+		slog.Error("failed to report remote-support credential", "error", err)
+		return
+	}
+	if err := os.WriteFile(marker, []byte("1"), 0o600); err != nil {
+		slog.Warn("remote-support account provisioned but could not write marker file; will re-provision (harmless — resets its password again) on next reconnect", "error", err)
 	}
 }
 

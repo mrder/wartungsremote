@@ -27,7 +27,10 @@ Server starts
   -> Temporary privilege elevation (reauth-gated, auto-expiring)
   -> Remote terminal (Linux PTY / Windows ConPTY) over a browser WebSocket
   -> SSH/RDP tunneling via the native `wr-helper` client (single-use ticket,
-     loopback-only local port)
+     loopback-only local port), plus a dedicated auto-provisioned
+     "remotewartung" OS account so the tunnel doesn't need the customer's
+     own login — password encrypted at rest, revealed/rotated from the
+     dashboard, every reveal audited
   -> File browsing, upload, download, mkdir, rename, delete
   -> Service management (systemd / Windows SCM)
   -> Process listing and termination
@@ -318,6 +321,13 @@ internet — only the agent-facing gateway (`public.listen`) is, and it
 never exposes a login. See `docs/DEPLOYMENT.md` §2-3. The Windows agent
 reaches the same capability level via the Windows Service running as
 LocalSystem — no separate decision needed there.
+
+**New stored secret, not just the device identity anymore:** the
+"remotewartung" account's password (see `docs/AGENT.md` "Remote-support
+account") is real, usable admin/root credential material sitting in the
+database, encrypted at rest with the same key as TOTP secrets
+(`WR_TOTP_ENCRYPTION_KEY_FILE`). Losing that key doesn't just break TOTP
+anymore — plan its backup/recovery accordingly (`docs/DEPLOYMENT.md` §6).
 
 ## License
 

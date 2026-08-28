@@ -5,6 +5,33 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added: dedicated remote-support OS account for the SSH/RDP tunnel
+
+- Real gap found by re-examining the SSH/RDP tunnel feature: it only
+  forwards raw network traffic to the device's own existing SSH/RDP
+  service — a login completely separate from our Ed25519 device identity.
+  Without a known account on the target, the tunnel needs the customer's
+  own credentials, defeating the "remote support without needing the
+  customer's login" goal that already holds for Terminal/Files/Services.
+- The agent now provisions a dedicated local account ("remotewartung",
+  never the customer's own root/Administrator account) once, on first
+  successful connection: `useradd`+`chpasswd` and a best-effort
+  `sudoers.d` drop-in on Linux (sudo group naming varies by distro, and
+  some minimal distros don't ship sudo at all — SSH login still works
+  either way, Terminal already has unconditional root regardless), local
+  Administrator via `net user`/`net localgroup` on Windows.
+- The generated password is reported once over the already-authenticated
+  control channel (new `support_credential_report` message) and stored
+  AES-256-GCM-encrypted (`internal/support`, same key as TOTP secrets) —
+  plaintext only ever exists in an explicit, audited dashboard reveal.
+  Rotatable on demand from the device's Remote tab; rotation re-runs the
+  same provisioning logic and reports the new password the same way.
+- New migration `0007_support_credential.sql`. Cross-compiles clean for
+  both `GOOS=linux` and `GOOS=windows`; encryption round-trip covered by
+  a unit test. Not yet live-verified against a real device — the actual
+  account creation should be tested deliberately (it's a persistent
+  change to a real machine), not exercised automatically.
+
 ### Fix: native Linux installers assumed a writable /usr/local/bin
 
 - Found live installing on a real ZimaOS box: `install(1)` doesn't create

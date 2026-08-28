@@ -192,6 +192,24 @@ func (a *agentSession) handleDeviceCommand(ctx context.Context, env protocol.Env
 			os.Exit(0)
 		}()
 
+	case protocol.CmdRotateSupportCredential:
+		if !a.policy.SSHTunnel && !a.policy.RDPTunnel {
+			a.deny(ctx, env.MessageID, "SSH/RDP tunnel disabled by local agent policy")
+			return
+		}
+		username, password, err := a.provider.EnsureSupportAccount(ctx)
+		if err != nil {
+			a.replyCommand(ctx, env.MessageID, "error", protocol.CodeInternalError, err.Error(), nil)
+			return
+		}
+		if err := a.writeEnvelope(ctx, protocol.TypeSupportCredentialReport, nil, protocol.SupportCredentialReportPayload{
+			Username: username, Password: password,
+		}); err != nil {
+			a.replyCommand(ctx, env.MessageID, "error", protocol.CodeInternalError, "rotated locally but failed to report to server", nil)
+			return
+		}
+		a.replyCommand(ctx, env.MessageID, "success", protocol.CodeOK, "support credential rotated", nil)
+
 	case protocol.CmdFilesUpload:
 		if !a.policy.FilesWrite {
 			a.deny(ctx, env.MessageID, "file write disabled by local agent policy")

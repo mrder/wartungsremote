@@ -57,6 +57,12 @@ type DeviceDisconnectHandler func(deviceID uuid.UUID)
 // pluggable-handler pattern.
 type VersionBlockedChecker func(ctx context.Context, osFamily, architecture, version string) (bool, error)
 
+// SupportCredentialHandler persists the dedicated local remote-support OS
+// account credential an agent reports after provisioning or rotating it.
+// Kept as a callback rather than a direct import of internal/support, same
+// reasoning as VersionBlockedChecker.
+type SupportCredentialHandler func(ctx context.Context, deviceID uuid.UUID, username, password string) error
+
 type Hub struct {
 	devices        *device.Repo
 	health         *monitoring.Engine
@@ -78,6 +84,9 @@ type Hub struct {
 
 	versionBlockedMu sync.RWMutex
 	versionBlocked   VersionBlockedChecker
+
+	supportCredentialHandlerMu sync.RWMutex
+	supportCredentialHandler   SupportCredentialHandler
 }
 
 func NewHub(devices *device.Repo, health *monitoring.Engine, auditLogger *audit.Logger, timing Timing, trustedProxies netutil.TrustedProxies) *Hub {
@@ -123,6 +132,15 @@ func (h *Hub) SetVersionBlockedChecker(fn VersionBlockedChecker) {
 	h.versionBlockedMu.Lock()
 	h.versionBlocked = fn
 	h.versionBlockedMu.Unlock()
+}
+
+// SetSupportCredentialHandler registers the callback that persists a
+// reported remote-support account credential. Must be called once during
+// startup wiring.
+func (h *Hub) SetSupportCredentialHandler(fn SupportCredentialHandler) {
+	h.supportCredentialHandlerMu.Lock()
+	h.supportCredentialHandler = fn
+	h.supportCredentialHandlerMu.Unlock()
 }
 
 type connection struct {
@@ -644,6 +662,21 @@ func (h *Hub) handleMessage(ctx context.Context, c *connection, env protocol.Env
 		}
 		_ = h.devices.RecordMetrics(ctx, c.deviceID, m.CPUPercent, m.Memory.UsedBytes, m.Memory.TotalBytes, m.Filesystems, m.UptimeSeconds)
 		_, _, _ = h.health.Evaluate(ctx, c.deviceID)
+
+	case protocol.TypeSupportCredentialReport:
+		var sc protocol.SupportCredentialReportPayload
+		if err := protocol.DecodePayload(env, &sc); err != nil {
+			h.protocolError(ctx, c, protocol.CodeInvalidRequest, "malformed support credential report")
+			return
+		}
+		h.supportCredentialHandlerMu.RLock()
+		handler := h.supportCredentialHandler
+		h.supportCredentialHandlerMu.RUnlock()
+		if handler != nil {
+			if err := handler(ctx, c.deviceID, sc.Username, sc.Password); err != nil {
+				slog.Error("failed to store support credential", "device_id", c.deviceID, "error", err)
+			}
+		}
 
 	case protocol.TypeCommandResult, protocol.TypeSessionOpenResult:
 		// A response whose request_id didn't match any pending waiter

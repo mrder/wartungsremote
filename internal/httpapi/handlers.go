@@ -22,6 +22,7 @@ import (
 	"wartungsremote/internal/netutil"
 	"wartungsremote/internal/relay"
 	"wartungsremote/internal/remotesession"
+	"wartungsremote/internal/support"
 )
 
 type handlers struct {
@@ -45,6 +46,7 @@ type handlers struct {
 	alerts         *alerting.Repo
 	releases       *agentrelease.Repo
 	settings       *appsettings.Repo
+	support        *support.Repo
 	help           []help.Section
 }
 

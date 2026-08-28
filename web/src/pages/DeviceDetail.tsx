@@ -4,6 +4,7 @@ import { DeviceApi, CustomerApi, ReleaseApi, AuditApi, ApiError, type Device, ty
 import StatusBadge from '../components/StatusBadge'
 import TerminalView from '../components/TerminalView'
 import TunnelPanel from '../components/TunnelPanel'
+import SupportCredentialPanel from '../components/SupportCredentialPanel'
 import FilesBrowser from '../components/FilesBrowser'
 import ServicesPanel from '../components/ServicesPanel'
 import ProcessesPanel from '../components/ProcessesPanel'
@@ -243,6 +244,7 @@ export default function DeviceDetail() {
           <>
             {canTerminal && <TerminalView deviceId={device.id} />}
             <TunnelPanel deviceId={device.id} osFamily={device.os_family} />
+            <SupportCredentialPanel deviceId={device.id} />
           </>
         ) : <p>Device must be online for remote access.</p>
       )}
