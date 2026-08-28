@@ -1,5 +1,7 @@
 # WartungsRemote
 
+[![CI](https://github.com/mrder/wartungsremote/actions/workflows/ci.yml/badge.svg)](https://github.com/mrder/wartungsremote/actions/workflows/ci.yml)
+
 WartungsRemote is a transparent, authorized remote maintenance platform for
 Windows and Linux devices. Devices always initiate an outbound connection to
 the server — no inbound router port-forwarding is required on the customer
@@ -56,19 +58,20 @@ Terminal/tunnel/file/service/process sessions are also cleaned up correctly
 when the agent disconnects mid-session (state -> `interrupted`, browser
 socket closed) rather than hanging until their own expiry.
 
-Disk history charts are code-complete and build/typecheck-verified, but not
-yet live-verified end to end (the local dev database was unreachable when
-this was built — re-verify against a real running stack before relying on
-it). Not yet implemented at all: network monitoring history charts — the
-agent doesn't currently collect network throughput data on the wire, so
-this needs an agent-side change (both platforms) and a new signed release
-before any data would even start flowing, not just a chart. Also not yet
-implemented: alert notification channels (email/ntfy/Telegram/webhooks/
-ioBroker), an audit hash-chain, and context links from dashboard error
-messages to help pages — see `docs/TODO.md` for the full phase-by-phase
-plan. `docs/TODO.md` is only checked off for items genuinely complete
-(code + tests/live verification + audit + docs), not partially started
-ones.
+Not yet implemented: network monitoring history charts — the agent doesn't
+currently collect network throughput data on the wire, so this needs an
+agent-side change (both platforms) and a new signed release before any
+data would even start flowing, not just a chart. Also not yet implemented:
+alert notification channels (email/ntfy/Telegram/webhooks/ioBroker), an
+audit hash-chain, and context links from dashboard error messages to help
+pages — see `docs/TODO.md` for the full phase-by-phase plan. `docs/TODO.md`
+is only checked off for items genuinely complete (code + tests/live
+verification + audit + docs), not partially started ones.
+
+The Docker Compose deployment (below) has been reviewed file-by-file and
+several real bugs it had were found and fixed this way, but it has not yet
+been run end to end with a real `docker compose up` on an actual server —
+verify it there before relying on it for production traffic.
 
 ## Repository layout
 
@@ -205,6 +208,13 @@ Both installers set up the documented config/data/log directories from
 after successful enrollment), and register the agent as a proper system
 service — visibly, with no hidden functionality (`docs/PROJECT_CONCEPT.md`
 §36).
+
+Shortly after first connecting, the agent also provisions a dedicated
+local account (`remotewartung`) for logging into the SSH/RDP tunnel —
+never the customer's own root/Administrator account, and never something
+you need to set up yourself. Reveal or rotate its password from a
+device's Remote tab (`docs/AGENT.md` "Remote-support account"); every
+reveal is audited.
 
 ## Building and installing the server (native, non-Docker)
 
