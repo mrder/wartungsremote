@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { DeviceApi, CustomerApi, ReleaseApi, AuditApi, ApiError, type Device, type AuditEntry, type Customer, type MaintenanceSession, type IPHistoryEntry } from '../api'
+import { DeviceApi, CustomerApi, ReleaseApi, AuditApi, ApiError, type Device, type AuditEntry, type Customer, type Group, type MaintenanceSession, type IPHistoryEntry } from '../api'
 import StatusBadge from '../components/StatusBadge'
 import TerminalView from '../components/TerminalView'
 import TunnelPanel from '../components/TunnelPanel'
@@ -24,6 +24,7 @@ export default function DeviceDetail() {
   const [resolution, setResolution] = useState<'raw' | 'hourly'>('raw')
   const [maintenanceHistory, setMaintenanceHistory] = useState<MaintenanceSession[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [groups, setGroups] = useState<Group[]>([])
   const [ipHistory, setIpHistory] = useState<IPHistoryEntry[]>([])
   const [error, setError] = useState('')
   const [requesting, setRequesting] = useState(false)
@@ -54,6 +55,7 @@ export default function DeviceDetail() {
     if (tab === 'maintenance') DeviceApi.maintenance(id).then((v) => setMaintenanceHistory(v ?? [])).catch(() => setMaintenanceHistory([]))
     if (tab === 'overview') {
       CustomerApi.list().then((v) => setCustomers(v ?? [])).catch(() => setCustomers([]))
+      CustomerApi.groups().then((v) => setGroups(v ?? [])).catch(() => setGroups([]))
       DeviceApi.ipHistory(id, 24).then((v) => setIpHistory(v ?? [])).catch(() => setIpHistory([]))
     }
   }, [tab, id, resolution])
@@ -65,6 +67,16 @@ export default function DeviceDetail() {
       load()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to assign customer')
+    }
+  }
+
+  async function assignGroup(groupId: string) {
+    if (!id) return
+    try {
+      await DeviceApi.patch(id, { group_id: groupId || null })
+      load()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to assign group')
     }
   }
 
@@ -203,6 +215,17 @@ export default function DeviceDetail() {
                 <select value={device.customer_id || ''} onChange={(e) => assignCustomer(e.target.value)}>
                   <option value="">- none -</option>
                   {customers.map((c) => <option key={c.ID} value={c.ID}>{c.Name}</option>)}
+                </select>
+              </td>
+            </tr>
+            <tr>
+              <td>Group</td>
+              <td>
+                <select value={device.group_id || ''} onChange={(e) => assignGroup(e.target.value)}>
+                  <option value="">- none -</option>
+                  {groups
+                    .filter((g) => !g.CustomerID || g.CustomerID === device.customer_id)
+                    .map((g) => <option key={g.ID} value={g.ID}>{g.Name}</option>)}
                 </select>
               </td>
             </tr>

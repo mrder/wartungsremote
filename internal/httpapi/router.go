@@ -270,6 +270,8 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	protected.HandleFunc("PATCH /api/v1/customers/{id}", h.handleUpdateCustomer)
 	protected.HandleFunc("GET /api/v1/groups", h.handleListGroups)
 	protected.HandleFunc("POST /api/v1/groups", h.handleCreateGroup)
+	protected.HandleFunc("PATCH /api/v1/groups/{id}", h.handleRenameGroup)
+	protected.HandleFunc("DELETE /api/v1/groups/{id}", h.handleDeleteGroup)
 	protected.HandleFunc("GET /api/v1/devices/{id}/maintenance", h.handleListMaintenance)
 
 	protected.HandleFunc("GET /api/v1/alert-rules", h.handleListAlertRules)

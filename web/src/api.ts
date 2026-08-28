@@ -201,6 +201,8 @@ export const CustomerApi = {
     api.patch(`/customers/${id}`, { name, customer_number: customerNumber, notes, status }),
   groups: (customerId?: string) => api.get<Group[]>('/groups' + (customerId ? `?customer_id=${customerId}` : '')),
   createGroup: (name: string, customerId?: string) => api.post<Group>('/groups', { name, customer_id: customerId }),
+  renameGroup: (id: string, name: string) => api.patch(`/groups/${id}`, { name }),
+  deleteGroup: (id: string) => api.del(`/groups/${id}`),
 }
 
 export const EnrollmentApi = {

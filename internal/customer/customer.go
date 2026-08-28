@@ -121,3 +121,28 @@ func (r *Repo) CreateGroup(ctx context.Context, customerID *uuid.UUID, name stri
 	}
 	return g, nil
 }
+
+func (r *Repo) RenameGroup(ctx context.Context, id uuid.UUID, name string) error {
+	tag, err := r.pool.Exec(ctx, `UPDATE device_groups SET name = $2 WHERE id = $1`, id, name)
+	if err != nil {
+		return fmt.Errorf("customer: rename group: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// DeleteGroup removes a group. Devices in it are not deleted — their
+// group_id is simply cleared (ON DELETE SET NULL, see migrations), same
+// as unassigning them one by one.
+func (r *Repo) DeleteGroup(ctx context.Context, id uuid.UUID) error {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM device_groups WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("customer: delete group: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

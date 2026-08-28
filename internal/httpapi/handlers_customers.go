@@ -7,6 +7,7 @@ import (
 
 	"wartungsremote/internal/audit"
 	authpkg "wartungsremote/internal/auth"
+	"wartungsremote/internal/customer"
 )
 
 func (h *handlers) handleListCustomers(w http.ResponseWriter, r *http.Request) {
@@ -141,6 +142,69 @@ func (h *handlers) handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, g, nil)
+}
+
+func (h *handlers) handleRenameGroup(w http.ResponseWriter, r *http.Request) {
+	grants := authpkg.GrantsFromContext(r.Context())
+	if !authpkg.HasAnyGrant(grants, authpkg.PermCustomerManage) {
+		writeErr(w, http.StatusForbidden, "permission_denied", "Not permitted")
+		return
+	}
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_request", "invalid group id")
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := decodeJSON(r, &req); err != nil || req.Name == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_request", "name is required")
+		return
+	}
+	if err := h.customers.RenameGroup(r.Context(), id, req.Name); err != nil {
+		if err == customer.ErrNotFound {
+			writeErr(w, http.StatusNotFound, "not_found", "Group not found")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to rename group")
+		return
+	}
+	user, _ := authpkg.UserFromContext(r.Context())
+	_ = h.audit.Record(r.Context(), audit.Event{
+		ActorType: audit.ActorUser, ActorID: &user.ID,
+		EventType: "group.renamed", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
+		Metadata: map[string]any{"group_id": id, "name": req.Name},
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"state": "ok"}, nil)
+}
+
+func (h *handlers) handleDeleteGroup(w http.ResponseWriter, r *http.Request) {
+	grants := authpkg.GrantsFromContext(r.Context())
+	if !authpkg.HasAnyGrant(grants, authpkg.PermCustomerManage) {
+		writeErr(w, http.StatusForbidden, "permission_denied", "Not permitted")
+		return
+	}
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_request", "invalid group id")
+		return
+	}
+	if err := h.customers.DeleteGroup(r.Context(), id); err != nil {
+		if err == customer.ErrNotFound {
+			writeErr(w, http.StatusNotFound, "not_found", "Group not found")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to delete group")
+		return
+	}
+	user, _ := authpkg.UserFromContext(r.Context())
+	_ = h.audit.Record(r.Context(), audit.Event{
+		ActorType: audit.ActorUser, ActorID: &user.ID,
+		EventType: "group.deleted", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
+		Metadata: map[string]any{"group_id": id},
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"state": "ok"}, nil)
 }
 
 func (h *handlers) handleListMaintenance(w http.ResponseWriter, r *http.Request) {
