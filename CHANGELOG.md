@@ -5,6 +5,19 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Verified: backup/restore actually works end to end
+
+- Ran the real mechanism scripts/backup-server.sh uses (pg_dump, gzip,
+  AES-256-CBC/pbkdf2 encrypt+decrypt) against the live local dev database,
+  restored the dump into a brand-new database, and confirmed every
+  table's row count matched exactly. Then went further: started a second
+  wr-core instance pointed at the *restored* database and logged in with
+  the original admin password — succeeded, proving the restored data
+  (including the Argon2id hash) is genuinely usable, not just
+  structurally similar. The docker-compose-specific wrapper (`docker
+  compose exec postgres pg_dump`) itself still needs a real Docker
+  daemon to verify, same caveat as the rest of the Compose deployment.
+
 ### Added: dedicated remote-support OS account for the SSH/RDP tunnel
 
 - Real gap found by re-examining the SSH/RDP tunnel feature: it only
