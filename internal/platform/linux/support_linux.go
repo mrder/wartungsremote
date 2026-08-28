@@ -4,13 +4,13 @@ package linux
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
+
+	"wartungsremote/internal/platform"
 )
 
 // SupportAccountUsername is the dedicated local account created for the
@@ -28,7 +28,10 @@ const SupportAccountUsername = "remotewartung"
 // just without elevation from that shell (Terminal already provides
 // unconditional root-equivalent access regardless of this).
 func (p *Provider) EnsureSupportAccount(ctx context.Context) (username, password string, err error) {
-	password, err = generateSupportPassword()
+	// Same length as Windows (see platform.GenerateSupportPassword) purely
+	// for one consistent format across both platforms — Linux itself has
+	// no equivalent length constraint.
+	password, err = platform.GenerateSupportPassword(14)
 	if err != nil {
 		return "", "", fmt.Errorf("linux: generate support password: %w", err)
 	}
@@ -70,12 +73,4 @@ func grantSudo(ctx context.Context) error {
 	}
 	line := fmt.Sprintf("%s ALL=(ALL) NOPASSWD:ALL\n", SupportAccountUsername)
 	return os.WriteFile(dir+"/wartungsremote-support", []byte(line), 0440)
-}
-
-func generateSupportPassword() (string, error) {
-	buf := make([]byte, 24)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
 }

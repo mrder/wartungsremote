@@ -129,6 +129,10 @@ func (h *handlers) handleGetDevice(w http.ResponseWriter, r *http.Request) {
 	online := h.hub.IsOnline(d.ID)
 	summary := deviceSummary(d)
 	summary["online"] = online
+	if status, err := h.support.GetStatus(r.Context(), d.ID); err == nil {
+		summary["support_credential_available"] = status.Available
+		summary["support_credential_updated_at"] = status.UpdatedAt
+	}
 	writeJSON(w, http.StatusOK, summary, nil)
 }
 

@@ -100,6 +100,7 @@ export default function DeviceDetail() {
   const canTerminal = user?.permissions.includes('remote.terminal')
   const canFiles = user?.permissions.includes('remote.files.read')
   const canUpdate = user?.permissions.includes('agent.update')
+  const canTunnel = user?.permissions.includes('remote.tunnel.ssh') || user?.permissions.includes('remote.tunnel.rdp')
   const isWindows = device.os_family === 'windows'
   const defaultFilesPath = isWindows ? 'C:\\' : '/'
 
@@ -178,6 +179,23 @@ export default function DeviceDetail() {
                 </span>
               </td>
             </tr>
+            {canTunnel && (
+              <tr>
+                <td>Remote-support account</td>
+                <td>
+                  {device.support_credential_available ? (
+                    <span className="badge badge-green">
+                      Ready{device.support_credential_updated_at ? ` (set ${new Date(device.support_credential_updated_at).toLocaleString()})` : ''}
+                    </span>
+                  ) : (
+                    <span className="badge badge-yellow" title="The device reports this shortly after first connecting, or after policy changes enable it">
+                      Not yet provisioned
+                    </span>
+                  )}
+                  {' — see Remote tab to reveal/rotate'}
+                </td>
+              </tr>
+            )}
             <tr><td>Tags</td><td>{device.tags?.join(', ') || '-'}</td></tr>
             <tr>
               <td>Customer</td>

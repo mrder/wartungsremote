@@ -93,6 +93,29 @@ type Credential struct {
 	UpdatedAt string
 }
 
+// Status is the lightweight, non-decrypting existence check used to show
+// "is a remote-support login even usable for this device" in the
+// dashboard overview, without paying the cost (or audit noise) of a full
+// reveal just to answer that.
+type Status struct {
+	Available bool
+	UpdatedAt string
+}
+
+func (r *Repo) GetStatus(ctx context.Context, deviceID uuid.UUID) (Status, error) {
+	var updatedAt string
+	err := r.pool.QueryRow(ctx, `
+		SELECT updated_at::text FROM device_support_credentials WHERE device_id = $1
+	`, deviceID).Scan(&updatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Status{Available: false}, nil
+	}
+	if err != nil {
+		return Status{}, fmt.Errorf("support: get status: %w", err)
+	}
+	return Status{Available: true, UpdatedAt: updatedAt}, nil
+}
+
 func (r *Repo) Get(ctx context.Context, deviceID uuid.UUID) (Credential, error) {
 	var username string
 	var ciphertext, nonce []byte

@@ -4,11 +4,11 @@ package windows
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"wartungsremote/internal/platform"
 )
 
 // SupportAccountUsername is the dedicated local account created for the
@@ -22,7 +22,7 @@ const SupportAccountUsername = "remotewartung"
 // already exists) and always sets a freshly generated password, since this
 // is called both on first provisioning and on every explicit rotation.
 func (p *Provider) EnsureSupportAccount(ctx context.Context) (username, password string, err error) {
-	password, err = generateSupportPassword()
+	password, err = platform.GenerateSupportPassword(14)
 	if err != nil {
 		return "", "", fmt.Errorf("windows: generate support password: %w", err)
 	}
@@ -45,16 +45,4 @@ func (p *Provider) EnsureSupportAccount(ctx context.Context) (username, password
 		return "", "", fmt.Errorf("windows: set support account password: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return SupportAccountUsername, password, nil
-}
-
-func generateSupportPassword() (string, error) {
-	buf := make([]byte, 24)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	// base64url already reliably mixes upper/lower/digits; append a fixed
-	// symbol so default Windows password-complexity policy (3 of 4
-	// character classes) is satisfied even in the unlikely case a given
-	// random draw lacks one.
-	return base64.RawURLEncoding.EncodeToString(buf) + "!1", nil
 }

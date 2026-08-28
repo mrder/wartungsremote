@@ -89,6 +89,8 @@ export interface Device {
   last_seen_at: string | null
   last_public_ip: string
   online?: boolean
+  support_credential_available?: boolean
+  support_credential_updated_at?: string
 }
 
 export interface IPHistoryEntry {
