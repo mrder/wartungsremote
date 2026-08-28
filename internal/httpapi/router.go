@@ -229,6 +229,7 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	protected.HandleFunc("GET /api/v1/me", h.handleMe)
 	protected.HandleFunc("POST /api/v1/auth/change-password", h.handleChangePassword)
 	protected.HandleFunc("POST /api/v1/enrollments", h.handleCreateEnrollment)
+	protected.HandleFunc("GET /api/v1/enrollments", h.handleListEnrollments)
 	protected.HandleFunc("DELETE /api/v1/enrollments/{id}", h.handleRevokeEnrollment)
 	protected.HandleFunc("GET /api/v1/devices", h.handleListDevices)
 	protected.HandleFunc("GET /api/v1/devices/{id}", h.handleGetDevice)

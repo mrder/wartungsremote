@@ -15,11 +15,12 @@ import (
 )
 
 type createEnrollmentRequest struct {
-	CustomerID        *string  `json:"customer_id"`
-	GroupID           *string  `json:"group_id"`
-	DisplayName       string   `json:"display_name"`
-	ExpiresInSeconds  int      `json:"expires_in_seconds"`
-	Tags              []string `json:"tags"`
+	CustomerID       *string  `json:"customer_id"`
+	GroupID          *string  `json:"group_id"`
+	DisplayName      string   `json:"display_name"`
+	ExpiresInSeconds int      `json:"expires_in_seconds"`
+	Tags             []string `json:"tags"`
+	Reusable         bool     `json:"reusable"`
 }
 
 func (h *handlers) handleCreateEnrollment(w http.ResponseWriter, r *http.Request) {
@@ -65,6 +66,7 @@ func (h *handlers) handleCreateEnrollment(w http.ResponseWriter, r *http.Request
 		ExpiresIn:   time.Duration(req.ExpiresInSeconds) * time.Second,
 		Tags:        req.Tags,
 		CreatedBy:   user.ID,
+		Reusable:    req.Reusable,
 	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to create enrollment")
@@ -74,7 +76,7 @@ func (h *handlers) handleCreateEnrollment(w http.ResponseWriter, r *http.Request
 	_ = h.audit.Record(r.Context(), audit.Event{
 		ActorType: audit.ActorUser, ActorID: &user.ID, CustomerID: customerID,
 		EventType: audit.EventEnrollmentCreated, Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
-		Metadata: map[string]any{"enrollment_id": created.ID},
+		Metadata: map[string]any{"enrollment_id": created.ID, "reusable": req.Reusable},
 	})
 
 	// The plaintext token is shown exactly once, per docs/API.md §4.
@@ -83,6 +85,24 @@ func (h *handlers) handleCreateEnrollment(w http.ResponseWriter, r *http.Request
 		"token":      created.Token,
 		"expires_at": created.ExpiresAt,
 	}, nil)
+}
+
+// handleListEnrollments lists outstanding (still-usable) enrollment
+// tokens — never the plaintext/hash, only enough for an admin to tell
+// which ones exist and revoke a specific one individually instead of
+// nuking every outstanding token via revoke-all.
+func (h *handlers) handleListEnrollments(w http.ResponseWriter, r *http.Request) {
+	grants := authpkg.GrantsFromContext(r.Context())
+	if !authpkg.HasAnyGrant(grants, authpkg.PermEnrollmentCreate) {
+		writeErr(w, http.StatusForbidden, "permission_denied", "Not permitted")
+		return
+	}
+	list, err := h.enroll.ListOutstanding(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to list enrollment tokens")
+		return
+	}
+	writeJSON(w, http.StatusOK, list, nil)
 }
 
 func (h *handlers) handleRevokeEnrollment(w http.ResponseWriter, r *http.Request) {

@@ -205,9 +205,22 @@ export const CustomerApi = {
   deleteGroup: (id: string) => api.del(`/groups/${id}`),
 }
 
+export interface OutstandingEnrollment {
+  ID: string
+  DisplayName: string | null
+  CustomerID: string | null
+  IsReusable: boolean
+  UseCount: number
+  LastUsedAt: string | null
+  ExpiresAt: string
+  CreatedAt: string
+}
+
 export const EnrollmentApi = {
-  create: (displayName: string, expiresInSeconds: number) =>
-    api.post<EnrollmentCreated>('/enrollments', { display_name: displayName, expires_in_seconds: expiresInSeconds }),
+  create: (displayName: string, expiresInSeconds: number, reusable = false) =>
+    api.post<EnrollmentCreated>('/enrollments', { display_name: displayName, expires_in_seconds: expiresInSeconds, reusable }),
+  list: () => api.get<OutstandingEnrollment[]>('/enrollments'),
+  revoke: (id: string) => api.del(`/enrollments/${id}`),
   revokeAll: () => api.post<{ revoked_count: number }>('/enrollments/revoke-all'),
 }
 

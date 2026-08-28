@@ -5,6 +5,29 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added: reusable enrollment tokens, and a way to actually see/revoke them
+
+- Bulk rollouts (many devices, one token) were previously not possible —
+  every enrollment token was single-use only. Added `reusable: true` on
+  token creation: installs any number of devices until it expires or is
+  revoked, with a much longer default/max validity (90 days vs. 24h for
+  single-use) since it's meant for a staged rollout, not a one-off
+  install. Deliberate accepted risk: anyone holding the token can enroll
+  additional devices for as long as it's valid, but that's the full
+  extent of it — enrollment alone grants no access beyond "a device
+  shows up in the list" (docs/AGENT.md §5).
+- Found while building this: `GET /enrollments` and `DELETE
+  /enrollments/:id` were already normatively specified (docs/API.md §4)
+  but `GET` was never implemented — meaning individual token revocation
+  was already wired up server-side this whole time but completely
+  unreachable from the dashboard (no way to discover a token's ID).
+  Added the list endpoint and a "show outstanding tokens" panel with
+  per-token revoke, so it's no longer all-or-nothing (revoke-all).
+- Live-verified end to end: created a reusable token, enrolled two
+  different devices with it, confirmed the outstanding list showed
+  `use_count: 2`, revoked it individually, confirmed a third enrollment
+  attempt was correctly rejected afterward.
+
 ### Added: automatic least-privilege database role for Docker Compose
 
 - `docs/DEPLOYMENT.md` §5a has long documented running wr-core against a

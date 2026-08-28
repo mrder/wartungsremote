@@ -25,12 +25,19 @@ var (
 
 // CreateParams are the admin-supplied parameters for POST /api/v1/enrollments.
 type CreateParams struct {
-	CustomerID    *uuid.UUID
-	GroupID       *uuid.UUID
-	DisplayName   string
-	ExpiresIn     time.Duration
-	Tags          []string
-	CreatedBy     uuid.UUID
+	CustomerID  *uuid.UUID
+	GroupID     *uuid.UUID
+	DisplayName string
+	ExpiresIn   time.Duration
+	Tags        []string
+	CreatedBy   uuid.UUID
+	// Reusable: install as many devices as needed with the same token
+	// until it expires or is explicitly revoked, instead of one-per-device
+	// (docs/AGENT.md §5). Deliberate accepted risk: anyone holding the
+	// token can enroll additional devices for as long as it's valid — the
+	// blast radius stays "an extra device shows up in the list", nothing
+	// more, since enrollment alone grants no access beyond that.
+	Reusable bool
 }
 
 // Created is returned once; the plaintext token is never retrievable again.
@@ -74,9 +81,22 @@ func hashToken(token string) ([]byte, error) {
 	return sum[:], nil
 }
 
+// maxExpiry is the ceiling for a normal single-use token (short-lived by
+// design). Reusable tokens are meant for a staged bulk rollout over days
+// or weeks, so they get a much longer ceiling instead.
+const (
+	maxExpiry         = 24 * time.Hour
+	maxReusableExpiry = 90 * 24 * time.Hour
+	defaultExpiry     = 30 * time.Minute
+)
+
 func (s *Service) Create(ctx context.Context, p CreateParams) (Created, error) {
-	if p.ExpiresIn <= 0 || p.ExpiresIn > 24*time.Hour {
-		p.ExpiresIn = 30 * time.Minute
+	ceiling := maxExpiry
+	if p.Reusable {
+		ceiling = maxReusableExpiry
+	}
+	if p.ExpiresIn <= 0 || p.ExpiresIn > ceiling {
+		p.ExpiresIn = defaultExpiry
 	}
 	token, hash, err := generateToken()
 	if err != nil {
@@ -90,10 +110,10 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (Created, error) {
 	var id uuid.UUID
 	expiresAt := time.Now().UTC().Add(p.ExpiresIn)
 	err = s.pool.QueryRow(ctx, `
-		INSERT INTO enrollment_tokens (token_hash, customer_id, group_id, display_name, tags, created_by, expires_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		INSERT INTO enrollment_tokens (token_hash, customer_id, group_id, display_name, tags, created_by, expires_at, is_reusable)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		RETURNING id
-	`, hash, p.CustomerID, p.GroupID, p.DisplayName, tagsJSON, p.CreatedBy, expiresAt).Scan(&id)
+	`, hash, p.CustomerID, p.GroupID, p.DisplayName, tagsJSON, p.CreatedBy, expiresAt, p.Reusable).Scan(&id)
 	if err != nil {
 		return Created{}, fmt.Errorf("enrollment: create token: %w", err)
 	}
@@ -112,6 +132,46 @@ func (s *Service) Revoke(ctx context.Context, id uuid.UUID) error {
 		return ErrTokenInvalid
 	}
 	return nil
+}
+
+// TokenSummary is a non-secret view of an enrollment token for the
+// dashboard — never the plaintext or hash, which exist nowhere after
+// creation except the one-time Created.Token response.
+type TokenSummary struct {
+	ID          uuid.UUID
+	DisplayName *string
+	CustomerID  *uuid.UUID
+	IsReusable  bool
+	UseCount    int
+	LastUsedAt  *time.Time
+	ExpiresAt   time.Time
+	CreatedAt   time.Time
+}
+
+// ListOutstanding returns every enrollment token that could still be used
+// right now — not expired, not revoked, and (for single-use tokens) not
+// already consumed. Reusable tokens stay listed until they expire or are
+// revoked, however many devices have used them.
+func (s *Service) ListOutstanding(ctx context.Context) ([]TokenSummary, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, display_name, customer_id, is_reusable, use_count, last_used_at, expires_at, created_at
+		FROM enrollment_tokens
+		WHERE revoked_at IS NULL AND expires_at > now() AND (is_reusable OR consumed_at IS NULL)
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("enrollment: list outstanding: %w", err)
+	}
+	defer rows.Close()
+	out := []TokenSummary{}
+	for rows.Next() {
+		var t TokenSummary
+		if err := rows.Scan(&t.ID, &t.DisplayName, &t.CustomerID, &t.IsReusable, &t.UseCount, &t.LastUsedAt, &t.ExpiresAt, &t.CreatedAt); err != nil {
+			return nil, fmt.Errorf("enrollment: scan outstanding token: %w", err)
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
 
 // RevokeAllOutstanding revokes every not-yet-consumed, not-yet-revoked
@@ -171,16 +231,20 @@ func (s *Service) Consume(ctx context.Context, req AgentEnrollRequest) (Enrolled
 	var tagsRaw []byte
 	var expiresAt time.Time
 	var consumedAt, revokedAt *time.Time
+	var isReusable bool
 	err = tx.QueryRow(ctx, `
-		SELECT id, customer_id, group_id, display_name, tags, expires_at, consumed_at, revoked_at
+		SELECT id, customer_id, group_id, display_name, tags, expires_at, consumed_at, revoked_at, is_reusable
 		FROM enrollment_tokens WHERE token_hash = $1 FOR UPDATE
-	`, hash).Scan(&tokenID, &customerID, &groupID, &displayName, &tagsRaw, &expiresAt, &consumedAt, &revokedAt)
+	`, hash).Scan(&tokenID, &customerID, &groupID, &displayName, &tagsRaw, &expiresAt, &consumedAt, &revokedAt, &isReusable)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Enrolled{}, ErrTokenInvalid
 	}
 	if err != nil {
 		return Enrolled{}, fmt.Errorf("enrollment: load token: %w", err)
 	}
+	// consumedAt is only ever set on a non-reusable token (see the update
+	// below), so this line alone already does the right thing for both
+	// kinds without an extra branch: reusable tokens simply never trip it.
 	if consumedAt != nil || revokedAt != nil || time.Now().UTC().After(expiresAt) {
 		return Enrolled{}, ErrTokenInvalid
 	}
@@ -220,9 +284,15 @@ func (s *Service) Consume(ctx context.Context, req AgentEnrollRequest) (Enrolled
 		return Enrolled{}, fmt.Errorf("enrollment: create credential: %w", err)
 	}
 
-	_, err = tx.Exec(ctx, `
-		UPDATE enrollment_tokens SET consumed_at = now(), consumed_device_id = $2 WHERE id = $1
-	`, tokenID, deviceID)
+	if isReusable {
+		_, err = tx.Exec(ctx, `
+			UPDATE enrollment_tokens SET use_count = use_count + 1, last_used_at = now() WHERE id = $1
+		`, tokenID)
+	} else {
+		_, err = tx.Exec(ctx, `
+			UPDATE enrollment_tokens SET consumed_at = now(), consumed_device_id = $2, use_count = 1, last_used_at = now() WHERE id = $1
+		`, tokenID, deviceID)
+	}
 	if err != nil {
 		return Enrolled{}, fmt.Errorf("enrollment: consume token: %w", err)
 	}

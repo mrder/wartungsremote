@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { DeviceApi, EnrollmentApi, ApiError, type Device } from '../api'
+import { DeviceApi, EnrollmentApi, ApiError, type Device, type OutstandingEnrollment } from '../api'
 import { useAuth } from '../AuthContext'
 import StatusBadge from '../components/StatusBadge'
 import AlertsBadge from '../components/AlertsBadge'
@@ -17,6 +17,9 @@ export default function DeviceList() {
   const [installOS, setInstallOS] = useState<'linux' | 'windows'>('linux')
   const [installChannel, setInstallChannel] = useState<'stable' | 'beta'>('stable')
   const [copied, setCopied] = useState(false)
+  const [reusable, setReusable] = useState(false)
+  const [outstanding, setOutstanding] = useState<OutstandingEnrollment[]>([])
+  const [showOutstanding, setShowOutstanding] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -40,12 +43,34 @@ export default function DeviceList() {
   async function createEnrollment() {
     setEnrollBusy(true)
     try {
-      const created = await EnrollmentApi.create('', 1800)
+      // Reusable tokens are meant for a staged bulk rollout, so they get
+      // a much longer default validity (30 days) than a single-use one
+      // (30 minutes) — matches the server-side ceiling per kind.
+      const expiresInSeconds = reusable ? 30 * 24 * 3600 : 1800
+      const created = await EnrollmentApi.create('', expiresInSeconds, reusable)
       setEnrollment(created)
+      loadOutstanding()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to create enrollment token')
     } finally {
       setEnrollBusy(false)
+    }
+  }
+
+  async function loadOutstanding() {
+    try {
+      setOutstanding((await EnrollmentApi.list()) ?? [])
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to load enrollment tokens')
+    }
+  }
+
+  async function revokeOne(id: string) {
+    try {
+      await EnrollmentApi.revoke(id)
+      loadOutstanding()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to revoke enrollment token')
     }
   }
 
@@ -77,6 +102,7 @@ export default function DeviceList() {
     try {
       const res = await EnrollmentApi.revokeAll()
       setRevokeMsg(`Revoked ${res.revoked_count} outstanding enrollment token(s).`)
+      loadOutstanding()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to revoke enrollment tokens')
     }
@@ -116,7 +142,16 @@ export default function DeviceList() {
         <input placeholder="Search devices..." value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load()} />
         <button onClick={load}>Search</button>
         {user?.permissions.includes('enrollment.create') && (
-          <button onClick={createEnrollment} disabled={enrollBusy}>+ Add Device</button>
+          <>
+            <label>
+              <input type="checkbox" checked={reusable} onChange={(e) => setReusable(e.target.checked)} />
+              {' '}Reusable (site) token
+            </label>
+            <button onClick={createEnrollment} disabled={enrollBusy}>+ Add Device</button>
+            <button onClick={() => { setShowOutstanding(!showOutstanding); if (!showOutstanding) loadOutstanding() }}>
+              {showOutstanding ? 'Hide' : 'Show'} outstanding tokens
+            </button>
+          </>
         )}
         {user?.permissions.includes('credential.revoke') && (
           <button onClick={revokeAllEnrollments}>Revoke all enrollment tokens</button>
@@ -124,11 +159,31 @@ export default function DeviceList() {
       </div>
       {revokeMsg && <p>{revokeMsg}</p>}
 
+      {showOutstanding && (
+        <table className="device-table">
+          <thead><tr><th>Type</th><th>Uses</th><th>Last used</th><th>Expires</th><th></th></tr></thead>
+          <tbody>
+            {outstanding.map((t) => (
+              <tr key={t.ID}>
+                <td>{t.IsReusable ? 'Reusable' : 'Single-use'}</td>
+                <td>{t.UseCount}</td>
+                <td>{t.LastUsedAt ? new Date(t.LastUsedAt).toLocaleString() : '-'}</td>
+                <td>{new Date(t.ExpiresAt).toLocaleString()}</td>
+                <td><button onClick={() => revokeOne(t.ID)}>Revoke</button></td>
+              </tr>
+            ))}
+            {outstanding.length === 0 && <tr><td colSpan={5}>No outstanding enrollment tokens.</td></tr>}
+          </tbody>
+        </table>
+      )}
+
       {enrollment && (
         <div className="enrollment-panel">
           <p>
-            New enrollment token — shown once, expires {new Date(enrollment.expires_at).toLocaleString()}. Run this
-            on the target device (as Administrator/root) to install and enroll it in one step:
+            New {reusable ? 'reusable (site) ' : ''}enrollment token — shown once, expires{' '}
+            {new Date(enrollment.expires_at).toLocaleString()}
+            {reusable ? ' — can install any number of devices until then' : ''}. Run this on the target device
+            (as Administrator/root) to install and enroll it in one step:
           </p>
           <div className="toolbar" style={{ marginBottom: '0.5rem' }}>
             <button onClick={() => setInstallOS('linux')} disabled={installOS === 'linux'}>Linux</button>

@@ -76,15 +76,24 @@ Permission: `device.manage`
   "group_id":"...",
   "display_name":"Server 01",
   "expires_in_seconds":1800,
-  "tags":["server"]
+  "tags":["server"],
+  "reusable":false
 }
 ```
 
 Response zeigt das Token **einmalig**.
 
+`reusable: true` erlaubt beliebig viele Geräte mit demselben Token bis
+Ablauf/Widerruf (Bulk-Rollout, docs/AGENT.md §5) — bewusst akzeptiertes
+Risiko: wer das Token kennt, kann zusätzliche Geräte anmelden, aber nicht
+mehr als das (kein Zugriff auf bestehende Geräte/Dashboard). Deutlich
+längere maximale Gültigkeit als ein Einweg-Token (90 Tage statt 24h).
+
 ### GET `/enrollments`
 
-Keine Token-Klartexte zurückgeben.
+Listet noch nutzbare (nicht abgelaufene/widerrufene/verbrauchte) Tokens.
+Keine Token-Klartexte zurückgeben — nur Metadaten (Typ, Nutzungszähler,
+Ablauf) zum gezielten Widerrufen eines einzelnen Tokens.
 
 ### DELETE `/enrollments/:id`
 
