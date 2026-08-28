@@ -46,6 +46,9 @@ fi
 install -d -o root -g root -m 0700 /etc/wartungsremote
 install -d -o root -g root -m 0700 /var/lib/wartungsremote
 install -d -o root -g root -m 0750 /var/log/wartungsremote
+# Not every distro ships /usr/local/bin pre-created (e.g. ZimaOS) — install
+# doesn't create missing parent directories on its own.
+install -d -o root -g root -m 0755 /usr/local/bin
 
 install -o root -g root -m 0755 "$BINARY_SRC" /usr/local/bin/wr-agent
 

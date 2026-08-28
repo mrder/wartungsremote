@@ -36,6 +36,9 @@ id -u wartungsremote-core >/dev/null 2>&1 || useradd --system --no-create-home -
 install -d -o wartungsremote-core -g wartungsremote-core -m 0750 /etc/wartungsremote
 install -d -o wartungsremote-core -g wartungsremote-core -m 0700 /etc/wartungsremote/secrets
 install -d -o wartungsremote-core -g wartungsremote-core -m 0750 /var/log/wartungsremote-core
+# Not every distro ships /usr/local/bin pre-created (e.g. ZimaOS) — install
+# doesn't create missing parent directories on its own.
+install -d -o root -g root -m 0755 /usr/local/bin
 
 install -o root -g root -m 0755 "$BINARY_SRC" /usr/local/bin/wr-core
 
