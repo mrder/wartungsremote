@@ -5,6 +5,29 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added: automatic least-privilege database role for Docker Compose
+
+- `docs/DEPLOYMENT.md` §5a has long documented running wr-core against a
+  restricted `wartungsremote_app` role (no DDL rights) instead of the
+  migration-owner role, but it was a fully manual, easy-to-skip step.
+  wr-core now supports two separate DSNs — `WR_MIGRATION_DATABASE_URL_FILE`
+  (DDL rights, used only for the startup migration step) and
+  `WR_DATABASE_URL_FILE` (the runtime connection, everything else) —
+  falling back to one DSN for both when the migration one isn't set, so
+  every existing native/dev install keeps working unchanged.
+- Docker Compose now sets this up automatically: a new `db-init` service
+  creates/updates the restricted role on every startup (idempotent —
+  `scripts/ensure-db-runtime-role.sql`) before wr-core starts, which is
+  wired to the two DSNs out of the box. Nothing to configure beyond the
+  existing `generate-docker-secrets.sh` step.
+- Found and fixed while testing the new SQL script: psql's `:variable`
+  substitution doesn't happen inside dollar-quoted (`DO $$ ... $$`)
+  blocks — the password had to be set via a plain `ALTER ROLE` statement
+  immediately after, not inside the conditional-create block itself.
+- Live-verified: ran the real migration, watched it apply cleanly via the
+  owner role, then confirmed the server (including a real login) runs
+  entirely on the restricted role with zero DDL rights.
+
 ### Verified: backup/restore actually works end to end
 
 - Ran the real mechanism scripts/backup-server.sh uses (pg_dump, gzip,

@@ -25,6 +25,20 @@ if (-not (Test-Path $databaseUrlPath)) {
     "postgres://wartungsremote:$dbPass@postgres:5432/wartungsremote?sslmode=disable" | Set-Content -Path $databaseUrlPath -NoNewline -Encoding ascii
 }
 
+# Least-privilege runtime role (docs/DEPLOYMENT.md §5a) - db-init creates/
+# updates it on every stack startup from this same password.
+$appRolePasswordPath = Join-Path $dir "app_role_password.txt"
+if (-not (Test-Path $appRolePasswordPath)) {
+    $buf = New-Object byte[] 24
+    [System.Security.Cryptography.RandomNumberGenerator]::Fill($buf)
+    [Convert]::ToBase64String($buf) | Set-Content -Path $appRolePasswordPath -NoNewline -Encoding ascii
+}
+$runtimeDatabaseUrlPath = Join-Path $dir "runtime_database_url.txt"
+if (-not (Test-Path $runtimeDatabaseUrlPath)) {
+    $appPass = Get-Content $appRolePasswordPath -Raw
+    "postgres://wartungsremote_app:$appPass@postgres:5432/wartungsremote?sslmode=disable" | Set-Content -Path $runtimeDatabaseUrlPath -NoNewline -Encoding ascii
+}
+
 New-RandomBytesFile (Join-Path $dir "session_pepper.bin") 32
 New-RandomBytesFile (Join-Path $dir "totp_key.bin") 32
 

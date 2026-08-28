@@ -66,7 +66,7 @@ jobs:
           cp .env.example .env
           cp server.example.yaml server.yaml
           mkdir -p secrets
-          for f in db_password.txt database_url.txt session_pepper.bin totp_key.bin admin_password.txt; do
+          for f in db_password.txt database_url.txt app_role_password.txt runtime_database_url.txt session_pepper.bin totp_key.bin admin_password.txt; do
             [ -f "secrets/$f" ] || echo -n "placeholder" > "secrets/$f"
           done
           docker compose config -q

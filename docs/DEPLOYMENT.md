@@ -103,21 +103,42 @@ Release Signing Private Key **nicht** hier speichern.
 
 Migrationen (Schema-DDL) laufen mit einer Owner-/Superuser-Rolle — das ist
 der einzige Zeitpunkt, an dem DDL-Rechte gebraucht werden. Der laufende
-wr-core-Prozess soll dagegen **keine** Superuserrechte besitzen:
+wr-core-Prozess soll dagegen **keine** Superuserrechte besitzen. wr-core
+unterstützt dafür zwei getrennte DSNs: `WR_MIGRATION_DATABASE_URL_FILE`
+(Owner-Rolle, nur für die Migrationen beim Start) und
+`WR_DATABASE_URL_FILE` (die eingeschränkte Rolle, für den laufenden
+Betrieb) — fehlt die erste, wird die zweite für beides verwendet (bisheriges
+Verhalten, unverändert für native Installationen ohne diese Trennung).
+
+**Docker Compose: automatisch.** Der `db-init`-Service legt
+`wartungsremote_app` bei jedem Start an/aktualisiert sie (idempotent,
+per `scripts/ensure-db-runtime-role.sql`), `wr-core` ist bereits auf die
+getrennten DSNs verdrahtet (`deployment/docker/docker-compose.yml`) —
+nichts weiter zu tun außer `generate-docker-secrets.sh` einmal laufen zu
+lassen.
+
+**Native Installation: manuell**, per `scripts/create-db-runtime-role.sql`
+(die nicht-idempotente Variante, für einen einmaligen manuellen Lauf):
 
 ```bash
 psql "$ADMIN_DSN" -v app_password="'<starkes Passwort>'" \
   -f scripts/create-db-runtime-role.sql
 ```
 
-Danach `WR_DATABASE_URL_FILE` auf die neue Rolle `wartungsremote_app`
-umstellen. Diese Rolle kann lesen/schreiben, aber keine Tabellen
+Danach `WR_MIGRATION_DATABASE_URL_FILE` auf die bisherige Owner-DSN und
+`WR_DATABASE_URL_FILE` auf die neue Rolle `wartungsremote_app` umstellen.
+Diese Rolle kann lesen/schreiben, aber keine Tabellen
 anlegen/ändern/löschen und keine weiteren Rollen erstellen — ein
 kompromittiertes DB-Credential oder eine SQL-Injection bleibt damit auf
 die Anwendungsdaten begrenzt statt die gesamte Postgres-Instanz zu
 gefährden. Künftige Migrationen erweitern die Tabellen automatisch
 (`ALTER DEFAULT PRIVILEGES`), ein erneuter Lauf des Skripts ist nur bei
 Rollenänderungen nötig.
+
+Live geprüft: lokal mit getrennten DSNs gestartet — Migrationen liefen
+korrekt über die Owner-Rolle, der laufende Server (inkl. echtem Login)
+funktionierte anschließend vollständig über die eingeschränkte Rolle
+ohne DDL-Rechte.
 
 ## 6. Backups
 

@@ -293,7 +293,10 @@ ssh -L 9080:127.0.0.1:9080 you@your-server
 ```
 
 Only the agent gateway is fronted by Caddy on 443 — that's the one thing
-meant to be reachable from the internet.
+meant to be reachable from the internet. wr-core also runs with a
+least-privilege database role for everything except the migrations that
+run once at startup (`docs/DEPLOYMENT.md` §5a) — a `db-init` service sets
+this up automatically, nothing to configure.
 
 Set up automatic backups (database + config + secrets, encrypted,
 configurable retention/schedule — see `docs/DEPLOYMENT.md` §6):

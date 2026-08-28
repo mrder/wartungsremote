@@ -86,10 +86,17 @@ type ServerConfig struct {
 // Secrets holds resolved secret material, sourced exclusively from files
 // referenced by environment variables (never inline config, never plain env vars).
 type Secrets struct {
-	DatabaseURL        string
-	SessionPepper      []byte
-	TOTPEncryptionKey  []byte
-	InternalServiceKey []byte
+	DatabaseURL string
+	// MigrationDatabaseURL, if set, is used only for running schema
+	// migrations at startup (needs DDL rights); DatabaseURL is then free
+	// to be a least-privilege runtime role that can't ALTER TABLE
+	// (docs/DEPLOYMENT.md §5a). Falls back to DatabaseURL when unset —
+	// the historical single-DSN behavior, unchanged for native/dev
+	// installs that don't use the restricted role at all.
+	MigrationDatabaseURL string
+	SessionPepper        []byte
+	TOTPEncryptionKey    []byte
+	InternalServiceKey   []byte
 	// ReleasePublicKey is the Ed25519 public key used to verify agent
 	// release signatures (docs/AGENT.md §15). The corresponding private
 	// key never touches the server — releases are signed offline with
@@ -209,6 +216,12 @@ func loadSecrets() (Secrets, error) {
 		return s, err
 	}
 	s.DatabaseURL = string(dbURL)
+
+	migrationDBURL, err := readSecretFile("WR_MIGRATION_DATABASE_URL_FILE")
+	if err != nil {
+		return s, err
+	}
+	s.MigrationDatabaseURL = string(migrationDBURL)
 
 	pepper, err := readSecretFile("WR_SESSION_PEPPER_FILE")
 	if err != nil {

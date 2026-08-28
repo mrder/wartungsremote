@@ -59,6 +59,29 @@ services:
       timeout: 5s
       retries: 5
 
+  # Creates/updates a least-privilege wartungsremote_app role (no DDL
+  # rights — can't ALTER/CREATE/DROP TABLE) and points wr-core's runtime
+  # connection at it instead of the owner role, per docs/DEPLOYMENT.md
+  # §5a. Runs on every startup (idempotent) so it self-heals even if a
+  # secret gets rotated; wr-core waits for it to finish successfully.
+  db-init:
+    image: postgres:16-alpine
+    restart: "no"
+    networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    secrets: [db_password, app_role_password]
+    volumes:
+      - ../../scripts/ensure-db-runtime-role.sql:/ensure-db-runtime-role.sql:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        export PGPASSWORD="$$(cat /run/secrets/db_password)"
+        APP_PW="$$(cat /run/secrets/app_role_password)"
+        psql -h postgres -U wartungsremote -d wartungsremote -v app_password="'$$APP_PW'" -f /ensure-db-runtime-role.sql
+
   wr-core:
     build:
       context: ../..
@@ -68,14 +91,21 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     environment:
       WR_CONFIG_FILE: /app/config/server.yaml
-      WR_DATABASE_URL_FILE: /run/secrets/database_url
+      # Runtime connection: the least-privilege role db-init maintains.
+      # Migrations (schema DDL, only ever needed at startup) instead use
+      # the owner role directly — see docs/DEPLOYMENT.md §5a.
+      WR_DATABASE_URL_FILE: /run/secrets/runtime_database_url
+      WR_MIGRATION_DATABASE_URL_FILE: /run/secrets/database_url
       WR_SESSION_PEPPER_FILE: /run/secrets/session_pepper
       WR_TOTP_ENCRYPTION_KEY_FILE: /run/secrets/totp_key
       WR_RELEASE_PUBLIC_KEY_FILE: /run/secrets/release_public_key
     secrets:
       - database_url
+      - runtime_database_url
       - session_pepper
       - totp_key
       - release_public_key
@@ -124,6 +154,10 @@ secrets:
     file: ./secrets/db_password.txt
   database_url:
     file: ./secrets/database_url.txt
+  app_role_password:
+    file: ./secrets/app_role_password.txt
+  runtime_database_url:
+    file: ./secrets/runtime_database_url.txt
   session_pepper:
     file: ./secrets/session_pepper.bin
   totp_key:

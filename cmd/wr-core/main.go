@@ -59,6 +59,7 @@ func main() {
 	action := flag.String("service", "", "service control action: install, uninstall, start, stop, restart (default: run in foreground)")
 	configPath := flag.String("config", os.Getenv("WR_CONFIG_FILE"), "path to server.yaml")
 	dbURLFile := flag.String("database-url-file", os.Getenv("WR_DATABASE_URL_FILE"), "path to a file containing the database DSN")
+	migrationDBURLFile := flag.String("migration-database-url-file", os.Getenv("WR_MIGRATION_DATABASE_URL_FILE"), "path to a file containing a DDL-capable database DSN for migrations only (optional; defaults to --database-url-file)")
 	sessionPepperFile := flag.String("session-pepper-file", os.Getenv("WR_SESSION_PEPPER_FILE"), "path to the session pepper secret file")
 	totpKeyFile := flag.String("totp-key-file", os.Getenv("WR_TOTP_ENCRYPTION_KEY_FILE"), "path to the TOTP encryption key secret file (32 bytes)")
 	internalKeyFile := flag.String("internal-service-key-file", os.Getenv("WR_INTERNAL_SERVICE_KEY_FILE"), "path to the internal service key secret file")
@@ -71,6 +72,7 @@ func main() {
 	// internal/config's single env-var-based secret loading path authoritative.
 	setEnvIfSet("WR_CONFIG_FILE", *configPath)
 	setEnvIfSet("WR_DATABASE_URL_FILE", *dbURLFile)
+	setEnvIfSet("WR_MIGRATION_DATABASE_URL_FILE", *migrationDBURLFile)
 	setEnvIfSet("WR_SESSION_PEPPER_FILE", *sessionPepperFile)
 	setEnvIfSet("WR_TOTP_ENCRYPTION_KEY_FILE", *totpKeyFile)
 	setEnvIfSet("WR_INTERNAL_SERVICE_KEY_FILE", *internalKeyFile)
@@ -81,6 +83,9 @@ func main() {
 	}
 	if *dbURLFile != "" {
 		svcArgs = append(svcArgs, "--database-url-file", *dbURLFile)
+	}
+	if *migrationDBURLFile != "" {
+		svcArgs = append(svcArgs, "--migration-database-url-file", *migrationDBURLFile)
 	}
 	if *sessionPepperFile != "" {
 		svcArgs = append(svcArgs, "--session-pepper-file", *sessionPepperFile)
@@ -161,17 +166,32 @@ func run(ctx context.Context) error {
 		return errors.New("no database DSN configured (set WR_DATABASE_URL_FILE or, for local dev only, WR_DATABASE_URL_DEV)")
 	}
 
+	// Migrations need DDL rights; the runtime DSN above is allowed to be a
+	// least-privilege role that doesn't have them (docs/DEPLOYMENT.md
+	// §5a) — in which case a separate migration DSN is required. Falls
+	// back to the same DSN when unset, which is the only DSN most
+	// installs (anything not using the restricted role) ever configure.
+	migrationDSN := cfg.Secrets.MigrationDatabaseURL
+	if migrationDSN == "" {
+		migrationDSN = dsn
+	}
+	migrationPool, err := db.Connect(ctx, migrationDSN)
+	if err != nil {
+		return fmt.Errorf("connect for migrations: %w", err)
+	}
+	migrateErr := db.Migrate(ctx, migrationPool, migrations.FS)
+	migrationPool.Close()
+	if migrateErr != nil {
+		return migrateErr
+	}
+	slog.Info("database migrations applied")
+
 	pool, err := db.Connect(ctx, dsn)
 	if err != nil {
 		return err
 	}
 	defer pool.Close()
 	slog.Info("database connected")
-
-	if err := db.Migrate(ctx, pool, migrations.FS); err != nil {
-		return err
-	}
-	slog.Info("database migrations applied")
 
 	auditLogger := audit.New(pool)
 
