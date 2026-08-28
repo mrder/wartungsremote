@@ -17,6 +17,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -114,6 +115,28 @@ func (r *Repo) GetStatus(ctx context.Context, deviceID uuid.UUID) (Status, error
 		return Status{}, fmt.Errorf("support: get status: %w", err)
 	}
 	return Status{Available: true, UpdatedAt: updatedAt}, nil
+}
+
+// ListDueForRotation returns device IDs whose credential was last set
+// before the cutoff — used by RunRotationSweeper (rotation.go). A device
+// with no reported credential yet is not "due" (it's simply not in this
+// table at all); this only ever rotates something that already exists.
+func (r *Repo) ListDueForRotation(ctx context.Context, olderThan time.Duration) ([]uuid.UUID, error) {
+	cutoff := time.Now().UTC().Add(-olderThan)
+	rows, err := r.pool.Query(ctx, `SELECT device_id FROM device_support_credentials WHERE updated_at < $1`, cutoff)
+	if err != nil {
+		return nil, fmt.Errorf("support: list due for rotation: %w", err)
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("support: scan due-for-rotation row: %w", err)
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 func (r *Repo) Get(ctx context.Context, deviceID uuid.UUID) (Credential, error) {

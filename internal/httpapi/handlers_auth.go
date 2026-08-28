@@ -186,6 +186,45 @@ func (h *handlers) handleReauth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"reauth_id": reauthID}, nil)
 }
 
+type changePasswordRequest struct {
+	ReauthID    string `json:"reauth_id"`
+	NewPassword string `json:"new_password"`
+}
+
+// handleChangePassword is self-service only — a user changing their own
+// password. It never touches other sessions (unlike an admin disabling a
+// suspected-compromised account elsewhere), since this is an intentional
+// action by the account owner, not incident response. Requires a fresh
+// reauth_id (current password + MFA, via /auth/reauth) exactly like
+// privilege elevation does — changing your own password is just as
+// sensitive.
+func (h *handlers) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	user, _ := authpkg.UserFromContext(r.Context())
+	var req changePasswordRequest
+	if err := decodeJSON(r, &req); err != nil || req.ReauthID == "" || req.NewPassword == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_request", "reauth_id and new_password are required")
+		return
+	}
+	valid, err := h.auth.ConsumeReauth(r.Context(), user.ID, req.ReauthID)
+	if err != nil || !valid {
+		writeErr(w, http.StatusForbidden, "privilege_required", "Reauthentication required")
+		return
+	}
+	if err := h.auth.ChangeOwnPassword(r.Context(), user.ID, req.NewPassword); err != nil {
+		if errors.Is(err, authpkg.ErrPasswordTooShort) {
+			writeErr(w, http.StatusBadRequest, "invalid_request", "Password must be at least 12 characters")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to change password")
+		return
+	}
+	_ = h.audit.Record(r.Context(), audit.Event{
+		ActorType: audit.ActorUser, ActorID: &user.ID,
+		EventType: "user.password_changed", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"state": "ok"}, nil)
+}
+
 func (h *handlers) handleMe(w http.ResponseWriter, r *http.Request) {
 	user, _ := authpkg.UserFromContext(r.Context())
 	sess, _ := authpkg.SessionFromContext(r.Context())

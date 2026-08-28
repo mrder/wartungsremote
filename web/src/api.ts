@@ -329,10 +329,18 @@ export const ReauthApi = {
   reauth: (password: string, code: string) => api.post<{ reauth_id: string }>('/auth/reauth', { password, code }),
 }
 
+export const AccountApi = {
+  changePassword: (reauthId: string, newPassword: string) =>
+    api.post('/auth/change-password', { reauth_id: reauthId, new_password: newPassword }),
+}
+
 export const SettingsApi = {
   getRetention: () => api.get<{ raw_retention_hours: number; hourly_retention_hours: number }>('/settings/retention'),
   setRetention: (rawRetentionHours: number, hourlyRetentionHours: number) =>
     api.patch('/settings/retention', { raw_retention_hours: rawRetentionHours, hourly_retention_hours: hourlyRetentionHours }),
+  getSupportCredentialRotation: () => api.get<{ rotation_days: number }>('/settings/support-credential-rotation'),
+  setSupportCredentialRotation: (rotationDays: number) =>
+    api.patch('/settings/support-credential-rotation', { rotation_days: rotationDays }),
 }
 
 // --- Services / Processes ---------------------------------------------------

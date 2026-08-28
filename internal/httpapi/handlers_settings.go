@@ -60,3 +60,50 @@ func (h *handlers) handleSetRetentionSettings(w http.ResponseWriter, r *http.Req
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"state": "ok"}, nil)
 }
+
+// handleGetSupportCredentialRotationSettings returns the configured
+// automatic rotation interval for remote-support account passwords (0 =
+// disabled, the default).
+func (h *handlers) handleGetSupportCredentialRotationSettings(w http.ResponseWriter, r *http.Request) {
+	grants := authpkg.GrantsFromContext(r.Context())
+	if !authpkg.HasAnyGrant(grants, authpkg.PermSystemSettings) {
+		writeErr(w, http.StatusForbidden, "permission_denied", "Not permitted")
+		return
+	}
+	days, err := h.settings.SupportCredentialRotationDays(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to load settings")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"rotation_days": days}, nil)
+}
+
+func (h *handlers) handleSetSupportCredentialRotationSettings(w http.ResponseWriter, r *http.Request) {
+	grants := authpkg.GrantsFromContext(r.Context())
+	if !authpkg.HasAnyGrant(grants, authpkg.PermSystemSettings) {
+		writeErr(w, http.StatusForbidden, "permission_denied", "Not permitted")
+		return
+	}
+	var body struct {
+		RotationDays int `json:"rotation_days"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_request", "Malformed request body")
+		return
+	}
+	if body.RotationDays < 0 {
+		writeErr(w, http.StatusBadRequest, "invalid_request", "rotation_days must be >= 0 (0 disables it)")
+		return
+	}
+	if err := h.settings.SetSupportCredentialRotationDays(r.Context(), body.RotationDays); err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to update settings")
+		return
+	}
+	user, _ := authpkg.UserFromContext(r.Context())
+	_ = h.audit.Record(r.Context(), audit.Event{
+		ActorType: audit.ActorUser, ActorID: &user.ID,
+		EventType: "settings.support_credential_rotation_changed", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
+		Metadata: map[string]any{"rotation_days": body.RotationDays},
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"state": "ok"}, nil)
+}

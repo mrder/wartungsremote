@@ -19,6 +19,12 @@ import (
 const (
 	KeyMetricsRawRetentionHours    = "metrics.raw_retention_hours"
 	KeyMetricsHourlyRetentionHours = "metrics.hourly_retention_hours"
+	// KeySupportCredentialRotationDays: 0 (the default, absent) means
+	// disabled — the remote-support account password is machine-generated
+	// and never seen by a human, so unlike a human login password there's
+	// no downside to rotating it on a schedule (only upside: an
+	// exfiltrated copy of the encrypted value in a DB breach goes stale).
+	KeySupportCredentialRotationDays = "support_credential.rotation_days"
 )
 
 type Repo struct {
@@ -87,4 +93,29 @@ func (r *Repo) SetMetricsRetention(ctx context.Context, raw, hourly time.Duratio
 		return err
 	}
 	return r.Set(ctx, KeyMetricsHourlyRetentionHours, strconv.Itoa(int(hourly.Hours())))
+}
+
+// SupportCredentialRotationDays returns the configured automatic rotation
+// interval for remote-support account passwords, or 0 if disabled
+// (the default — nothing rotates until explicitly turned on).
+func (r *Repo) SupportCredentialRotationDays(ctx context.Context) (int, error) {
+	v, ok, err := r.Get(ctx, KeySupportCredentialRotationDays)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, nil
+	}
+	days, err := strconv.Atoi(v)
+	if err != nil || days < 0 {
+		return 0, nil
+	}
+	return days, nil
+}
+
+func (r *Repo) SetSupportCredentialRotationDays(ctx context.Context, days int) error {
+	if days < 0 {
+		return fmt.Errorf("appsettings: rotation days must be >= 0 (0 disables it)")
+	}
+	return r.Set(ctx, KeySupportCredentialRotationDays, strconv.Itoa(days))
 }

@@ -176,6 +176,21 @@ func (r *Repo) CreateUser(ctx context.Context, username, displayName, passwordHa
 	return id, nil
 }
 
+// UpdatePasswordHash overwrites a user's password hash — used by the
+// self-service "change my password" flow. Unlike RegisterFailedLogin/
+// ResetFailedLogins, this doesn't touch lockout state, since a successful
+// password change isn't itself a login attempt.
+func (r *Repo) UpdatePasswordHash(ctx context.Context, userID uuid.UUID, passwordHash string) error {
+	tag, err := r.pool.Exec(ctx, `UPDATE users SET password_hash = $2 WHERE id = $1`, userID, passwordHash)
+	if err != nil {
+		return fmt.Errorf("auth: update password hash: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (r *Repo) AssignRole(ctx context.Context, userID, roleID uuid.UUID, scope ScopeType, scopeID *uuid.UUID) error {
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO user_roles (user_id, role_id, scope_type, scope_id)

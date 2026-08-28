@@ -131,6 +131,7 @@ func NewRouter(deps Dependencies) (*Router, error) {
 
 	supportRepo := support.NewRepo(deps.Pool, deps.Config.Secrets.TOTPEncryptionKey)
 	hub.SetSupportCredentialHandler(supportRepo.Upsert)
+	go support.RunRotationSweeper(hubCtx, supportRepo, settingsRepo, hub, time.Hour)
 
 	helpSections, err := help.Load(cfg.Help.ContentDir)
 	if err != nil {
@@ -222,6 +223,7 @@ func NewRouter(deps Dependencies) (*Router, error) {
 
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /api/v1/me", h.handleMe)
+	protected.HandleFunc("POST /api/v1/auth/change-password", h.handleChangePassword)
 	protected.HandleFunc("POST /api/v1/enrollments", h.handleCreateEnrollment)
 	protected.HandleFunc("DELETE /api/v1/enrollments/{id}", h.handleRevokeEnrollment)
 	protected.HandleFunc("GET /api/v1/devices", h.handleListDevices)
@@ -284,6 +286,8 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	protected.HandleFunc("POST /api/v1/devices/{id}/support-credential/rotate", h.handleRotateSupportCredential)
 	protected.HandleFunc("GET /api/v1/settings/retention", h.handleGetRetentionSettings)
 	protected.HandleFunc("PATCH /api/v1/settings/retention", h.handleSetRetentionSettings)
+	protected.HandleFunc("GET /api/v1/settings/support-credential-rotation", h.handleGetSupportCredentialRotationSettings)
+	protected.HandleFunc("PATCH /api/v1/settings/support-credential-rotation", h.handleSetSupportCredentialRotationSettings)
 	protected.HandleFunc("POST /api/v1/alerts/{id}/acknowledge", h.handleAcknowledgeAlert)
 	protected.HandleFunc("POST /api/v1/alerts/{id}/resolve", h.handleResolveAlert)
 	protected.HandleFunc("DELETE /api/v1/alerts/{id}", h.handleDeleteAlert)

@@ -1,6 +1,20 @@
 package auth
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/google/uuid"
+)
+
+func TestChangeOwnPasswordRejectsShortPassword(t *testing.T) {
+	s := &Service{Argon2: DefaultArgon2Params()}
+	err := s.ChangeOwnPassword(context.Background(), uuid.Nil, "tooshort")
+	if !errors.Is(err, ErrPasswordTooShort) {
+		t.Fatalf("expected ErrPasswordTooShort, got %v", err)
+	}
+}
 
 func TestHashAndVerifyPasswordRoundTrip(t *testing.T) {
 	params := DefaultArgon2Params()

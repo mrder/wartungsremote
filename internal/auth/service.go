@@ -248,6 +248,27 @@ func (s *Service) ConsumeReauth(ctx context.Context, userID uuid.UUID, reauthID 
 	return tag.RowsAffected() == 1, nil
 }
 
+// ErrPasswordTooShort mirrors the minimum enforced at admin bootstrap
+// (docs/SECURITY.md §7) so the rule is the same everywhere a password is
+// ever set, not just at createadmin time.
+var ErrPasswordTooShort = errors.New("auth: password must be at least 12 characters")
+
+// ChangeOwnPassword sets a new password for an already-authenticated user.
+// The caller (HTTP handler) is responsible for having already consumed a
+// fresh ConsumeReauth (current password + MFA) — this method only
+// enforces the password policy and writes the new hash; it does not
+// re-verify identity itself, since reauth already did.
+func (s *Service) ChangeOwnPassword(ctx context.Context, userID uuid.UUID, newPassword string) error {
+	if len(newPassword) < 12 {
+		return ErrPasswordTooShort
+	}
+	hash, err := HashPassword(newPassword, s.Argon2)
+	if err != nil {
+		return fmt.Errorf("auth: hash new password: %w", err)
+	}
+	return s.Repo.UpdatePasswordHash(ctx, userID, hash)
+}
+
 // HashRandomSecret is a small helper for generating opaque high-entropy
 // identifiers elsewhere (e.g. enrollment tokens) with a consistent
 // SHA-256-based storage hash.

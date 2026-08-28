@@ -100,7 +100,7 @@ export default function DeviceList() {
           {user?.permissions.includes('system.settings') && <Link to="/settings">Settings</Link>}
           <Link to="/help">Help</Link>
           <AlertsBadge />
-          <span>{user?.username}</span>
+          <Link to="/account">{user?.username}</Link>
           <button onClick={logout}>Logout</button>
         </div>
       </header>
