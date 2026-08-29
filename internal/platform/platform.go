@@ -117,6 +117,13 @@ type LogProvider interface {
 	QueryLogs(ctx context.Context, q LogQuery) ([]LogEntry, error)
 }
 
+// NetworkCounterProvider reads cumulative (since-boot) system-wide
+// network byte counters, summed across all interfaces — the raw input
+// internal/netmetrics turns into per-interval traffic samples.
+type NetworkCounterProvider interface {
+	NetworkCounters(ctx context.Context) (bytesSent, bytesRecv uint64, err error)
+}
+
 // SupportAccountProvider creates (or resets the password of) the dedicated
 // local OS account used to log into the SSH/RDP tunnel this device
 // exposes — a separate login from our own Ed25519 device identity, needed
@@ -138,6 +145,7 @@ type Provider interface {
 	FileProvider
 	LogProvider
 	SupportAccountProvider
+	NetworkCounterProvider
 	// Capabilities lists the capability strings this platform build
 	// actually supports, reported in the control channel hello handshake.
 	Capabilities() []string

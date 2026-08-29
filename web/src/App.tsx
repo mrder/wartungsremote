@@ -8,6 +8,7 @@ import Alerts from './pages/Alerts'
 import Releases from './pages/Releases'
 import Users from './pages/Users'
 import Settings from './pages/Settings'
+import NetworkUsage from './pages/NetworkUsage'
 import Account from './pages/Account'
 import Help from './pages/Help'
 
@@ -28,6 +29,7 @@ function AppRoutes() {
       <Route path="/releases" element={<RequireAuth><Releases /></RequireAuth>} />
       <Route path="/users" element={<RequireAuth><Users /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
+      <Route path="/network-usage" element={<RequireAuth><NetworkUsage /></RequireAuth>} />
       <Route path="/account" element={<RequireAuth><Account /></RequireAuth>} />
       <Route path="/help" element={<RequireAuth><Help /></RequireAuth>} />
       <Route path="/help/:slug" element={<RequireAuth><Help /></RequireAuth>} />

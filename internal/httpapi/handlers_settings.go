@@ -62,6 +62,58 @@ func (h *handlers) handleSetRetentionSettings(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, map[string]any{"state": "ok"}, nil)
 }
 
+// handleGetNetworkRetentionSettings mirrors handleGetRetentionSettings
+// for the separate device_network_metrics[_hourly] tables.
+func (h *handlers) handleGetNetworkRetentionSettings(w http.ResponseWriter, r *http.Request) {
+	grants := authpkg.GrantsFromContext(r.Context())
+	if !authpkg.HasAnyGrant(grants, authpkg.PermSystemSettings) {
+		writeErr(w, http.StatusForbidden, "permission_denied", "Not permitted")
+		return
+	}
+	raw, hourly, err := h.settings.NetworkMetricsRetention(r.Context(), h.cfg.Metrics.NetworkRawRetention, h.cfg.Metrics.NetworkHourlyRetention)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to load settings")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"raw_retention_hours":    int(raw.Hours()),
+		"hourly_retention_hours": int(hourly.Hours()),
+	}, nil)
+}
+
+func (h *handlers) handleSetNetworkRetentionSettings(w http.ResponseWriter, r *http.Request) {
+	grants := authpkg.GrantsFromContext(r.Context())
+	if !authpkg.HasAnyGrant(grants, authpkg.PermSystemSettings) {
+		writeErr(w, http.StatusForbidden, "permission_denied", "Not permitted")
+		return
+	}
+	var body struct {
+		RawRetentionHours    int `json:"raw_retention_hours"`
+		HourlyRetentionHours int `json:"hourly_retention_hours"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_request", "Malformed request body")
+		return
+	}
+	if body.RawRetentionHours <= 0 || body.HourlyRetentionHours <= 0 {
+		writeErr(w, http.StatusBadRequest, "invalid_request", "Both retention values must be positive")
+		return
+	}
+	raw := time.Duration(body.RawRetentionHours) * time.Hour
+	hourly := time.Duration(body.HourlyRetentionHours) * time.Hour
+	if err := h.settings.SetNetworkMetricsRetention(r.Context(), raw, hourly); err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to update settings")
+		return
+	}
+	user, _ := authpkg.UserFromContext(r.Context())
+	_ = h.audit.Record(r.Context(), audit.Event{
+		ActorType: audit.ActorUser, ActorID: &user.ID,
+		EventType: "settings.network_retention_changed", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
+		Metadata: map[string]any{"raw_retention_hours": body.RawRetentionHours, "hourly_retention_hours": body.HourlyRetentionHours},
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"state": "ok"}, nil)
+}
+
 // handleGetSupportCredentialRotationSettings returns the configured
 // automatic rotation interval for remote-support account passwords (0 =
 // disabled, the default).

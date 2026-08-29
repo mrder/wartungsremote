@@ -19,6 +19,11 @@ import (
 const (
 	KeyMetricsRawRetentionHours    = "metrics.raw_retention_hours"
 	KeyMetricsHourlyRetentionHours = "metrics.hourly_retention_hours"
+	// KeyNetwork*RetentionHours: same idea as the two above, but for
+	// device_network_metrics[_hourly], which has its own defaults and
+	// settings endpoint since it's collected at a different cadence.
+	KeyNetworkRawRetentionHours    = "network_metrics.raw_retention_hours"
+	KeyNetworkHourlyRetentionHours = "network_metrics.hourly_retention_hours"
 	// KeySupportCredentialRotationDays: 0 (the default, absent) means
 	// disabled — the remote-support account password is machine-generated
 	// and never seen by a human, so unlike a human login password there's
@@ -93,6 +98,40 @@ func (r *Repo) SetMetricsRetention(ctx context.Context, raw, hourly time.Duratio
 		return err
 	}
 	return r.Set(ctx, KeyMetricsHourlyRetentionHours, strconv.Itoa(int(hourly.Hours())))
+}
+
+// NetworkMetricsRetention mirrors MetricsRetention for the separate
+// device_network_metrics[_hourly] tables.
+func (r *Repo) NetworkMetricsRetention(ctx context.Context, defaultRaw, defaultHourly time.Duration) (raw, hourly time.Duration, err error) {
+	raw = defaultRaw
+	hourly = defaultHourly
+	if v, ok, gerr := r.Get(ctx, KeyNetworkRawRetentionHours); gerr != nil {
+		return 0, 0, gerr
+	} else if ok {
+		if h, perr := strconv.Atoi(v); perr == nil && h > 0 {
+			raw = time.Duration(h) * time.Hour
+		}
+	}
+	if v, ok, gerr := r.Get(ctx, KeyNetworkHourlyRetentionHours); gerr != nil {
+		return 0, 0, gerr
+	} else if ok {
+		if h, perr := strconv.Atoi(v); perr == nil && h > 0 {
+			hourly = time.Duration(h) * time.Hour
+		}
+	}
+	return raw, hourly, nil
+}
+
+// SetNetworkMetricsRetention mirrors SetMetricsRetention for the network
+// metrics tables.
+func (r *Repo) SetNetworkMetricsRetention(ctx context.Context, raw, hourly time.Duration) error {
+	if raw <= 0 || hourly <= 0 {
+		return fmt.Errorf("appsettings: retention values must be positive")
+	}
+	if err := r.Set(ctx, KeyNetworkRawRetentionHours, strconv.Itoa(int(raw.Hours()))); err != nil {
+		return err
+	}
+	return r.Set(ctx, KeyNetworkHourlyRetentionHours, strconv.Itoa(int(hourly.Hours())))
 }
 
 // SupportCredentialRotationDays returns the configured automatic rotation

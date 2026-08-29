@@ -121,6 +121,7 @@ export default function DeviceList() {
         <h1>WartungsRemote</h1>
         <div>
           <Link to="/customers">Customers</Link>
+          {user?.permissions.includes('monitoring.read') && <Link to="/network-usage">Network usage</Link>}
           {user?.permissions.includes('agent.update') && <Link to="/releases">Releases</Link>}
           {user?.permissions.includes('user.manage') && <Link to="/users">Users</Link>}
           {user?.permissions.includes('system.settings') && <Link to="/settings">Settings</Link>}

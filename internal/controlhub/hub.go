@@ -27,10 +27,11 @@ import (
 const minAgentVersion = "0.1.0"
 
 type Timing struct {
-	HeartbeatInterval   time.Duration
-	ConnectionLostAfter time.Duration
-	OfflineAfter        time.Duration
-	StatusInterval      time.Duration
+	HeartbeatInterval     time.Duration
+	ConnectionLostAfter   time.Duration
+	OfflineAfter          time.Duration
+	StatusInterval        time.Duration
+	NetworkUploadInterval time.Duration
 }
 
 // BinaryFrameHandler receives inbound stream frames (terminal/tunnel/file
@@ -550,12 +551,13 @@ func (h *Hub) handshake(ctx context.Context, conn *websocket.Conn) (deviceID, in
 	}
 
 	ackRaw, err := protocol.Encode(protocol.TypeHelloAck, &env.MessageID, protocol.HelloAckPayload{
-		ConnectionID:             uuid.NewString(),
-		ServerTime:               time.Now().UTC(),
-		HeartbeatIntervalSeconds: int(h.timing.HeartbeatInterval.Seconds()),
-		StatusIntervalSeconds:    int(h.timing.StatusInterval.Seconds()),
-		MaxMessageBytes:          protocol.MaxInventoryBytes,
-		MinimumAgentVersion:      minAgentVersion,
+		ConnectionID:                 uuid.NewString(),
+		ServerTime:                   time.Now().UTC(),
+		HeartbeatIntervalSeconds:     int(h.timing.HeartbeatInterval.Seconds()),
+		StatusIntervalSeconds:        int(h.timing.StatusInterval.Seconds()),
+		MaxMessageBytes:              protocol.MaxInventoryBytes,
+		MinimumAgentVersion:          minAgentVersion,
+		NetworkUploadIntervalSeconds: int(h.timing.NetworkUploadInterval.Seconds()),
 	})
 	if err != nil {
 		return uuid.Nil, uuid.Nil, false
@@ -662,6 +664,20 @@ func (h *Hub) handleMessage(ctx context.Context, c *connection, env protocol.Env
 		}
 		_ = h.devices.RecordMetrics(ctx, c.deviceID, m.CPUPercent, m.Memory.UsedBytes, m.Memory.TotalBytes, m.Filesystems, m.UptimeSeconds)
 		_, _, _ = h.health.Evaluate(ctx, c.deviceID)
+
+	case protocol.TypeNetworkMetricsBatch:
+		if len(env.Payload) > protocol.MaxEventBatchBytes {
+			h.protocolError(ctx, c, protocol.CodeMessageTooLarge, "network metrics batch too large")
+			return
+		}
+		var nb protocol.NetworkMetricsBatchPayload
+		if err := protocol.DecodePayload(env, &nb); err != nil {
+			h.protocolError(ctx, c, protocol.CodeInvalidRequest, "malformed network metrics batch")
+			return
+		}
+		if err := h.devices.RecordNetworkMetricsBatch(ctx, c.deviceID, nb.Samples); err != nil {
+			slog.Error("failed to record network metrics batch", "device_id", c.deviceID, "error", err)
+		}
 
 	case protocol.TypeSupportCredentialReport:
 		var sc protocol.SupportCredentialReportPayload

@@ -12,14 +12,17 @@ import (
 // takes effect without a server restart.
 type RetentionSource interface {
 	MetricsRetention(ctx context.Context, defaultRaw, defaultHourly time.Duration) (raw, hourly time.Duration, err error)
+	NetworkMetricsRetention(ctx context.Context, defaultRaw, defaultHourly time.Duration) (raw, hourly time.Duration, err error)
 }
 
 // RunMetricsRetentionSweeper periodically rolls up raw metrics into hourly
 // aggregates and prunes rows past their retention window (docs/DATABASE.md
 // §3, docs/CONFIGURATION.md §1 metrics.raw_retention/hourly_retention).
 // defaultRaw/defaultHourly are the server.yaml values, used whenever no
-// runtime override has been set.
-func RunMetricsRetentionSweeper(ctx context.Context, repo *Repo, settings RetentionSource, defaultRaw, defaultHourly, interval time.Duration) {
+// runtime override has been set. Also rolls up/prunes the separate
+// device_network_metrics[_hourly] tables on the same tick — no need for a
+// second ticker just because the retention windows differ.
+func RunMetricsRetentionSweeper(ctx context.Context, repo *Repo, settings RetentionSource, defaultRaw, defaultHourly, defaultNetworkRaw, defaultNetworkHourly, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -29,15 +32,28 @@ func RunMetricsRetentionSweeper(ctx context.Context, repo *Repo, settings Retent
 		case <-ticker.C:
 			if err := repo.RollupHourlyMetrics(ctx); err != nil {
 				slog.Error("metrics rollup failed", "error", err)
+			} else {
+				rawRetention, hourlyRetention, err := settings.MetricsRetention(ctx, defaultRaw, defaultHourly)
+				if err != nil {
+					slog.Error("metrics retention: failed to resolve settings, using server.yaml defaults", "error", err)
+					rawRetention, hourlyRetention = defaultRaw, defaultHourly
+				}
+				if err := repo.ApplyMetricsRetention(ctx, rawRetention, hourlyRetention); err != nil {
+					slog.Error("metrics retention failed", "error", err)
+				}
+			}
+
+			if err := repo.RollupHourlyNetworkMetrics(ctx); err != nil {
+				slog.Error("network metrics rollup failed", "error", err)
 				continue
 			}
-			rawRetention, hourlyRetention, err := settings.MetricsRetention(ctx, defaultRaw, defaultHourly)
+			networkRaw, networkHourly, err := settings.NetworkMetricsRetention(ctx, defaultNetworkRaw, defaultNetworkHourly)
 			if err != nil {
-				slog.Error("metrics retention: failed to resolve settings, using server.yaml defaults", "error", err)
-				rawRetention, hourlyRetention = defaultRaw, defaultHourly
+				slog.Error("network metrics retention: failed to resolve settings, using server.yaml defaults", "error", err)
+				networkRaw, networkHourly = defaultNetworkRaw, defaultNetworkHourly
 			}
-			if err := repo.ApplyMetricsRetention(ctx, rawRetention, hourlyRetention); err != nil {
-				slog.Error("metrics retention failed", "error", err)
+			if err := repo.ApplyNetworkMetricsRetention(ctx, networkRaw, networkHourly); err != nil {
+				slog.Error("network metrics retention failed", "error", err)
 			}
 		}
 	}

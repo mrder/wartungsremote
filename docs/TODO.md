@@ -389,8 +389,8 @@
 - [x] Metrics-Speicherung
 - [x] CPU History
 - [x] RAM History
-- [ ] Disk History (nur aktueller Snapshot, keine Zeitreihe)
-- [ ] Network History (nur aktueller Snapshot, keine Zeitreihe)
+- [x] Disk History (`device_metrics.disk_used_bytes`/`disk_total_bytes`, Chart in DeviceDetail — war hier fälschlich noch offen, obwohl längst umgesetzt)
+- [x] Network History (eigene Tabelle `device_network_metrics[_hourly]`, agentseitig lokal gepuffert und im Batch hochgeladen statt live gepusht — siehe internal/netmetrics, docs/AGENT.md §8a, docs/PROTOCOL.md §7a; live-verifiziert: v0.2.0-Agent signiert/ausgerollt, echte Traffic-Daten in Dashboard-Charts und der Network-usage-Übersicht bestätigt)
 - [ ] Temperatur optional
 - [x] Downsampling (stündliche Aggregation, `device_metrics_hourly`)
 - [x] Retention Policies (konfigurierbar über `metrics.raw_retention`/`metrics.hourly_retention`)

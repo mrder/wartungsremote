@@ -141,6 +141,20 @@ func (p *Provider) Metrics(ctx context.Context) (protocol.MetricsReportPayload, 
 	}, nil
 }
 
+// NetworkCounters sums cumulative (since-boot) byte counters across every
+// interface — pernic=false does that summation inside gopsutil, so a
+// machine with several NICs still yields one system-wide total.
+func (p *Provider) NetworkCounters(ctx context.Context) (bytesSent, bytesRecv uint64, err error) {
+	stats, err := psnet.IOCountersWithContext(ctx, false)
+	if err != nil {
+		return 0, 0, fmt.Errorf("windows: network counters: %w", err)
+	}
+	if len(stats) == 0 {
+		return 0, 0, nil
+	}
+	return stats[0].BytesSent, stats[0].BytesRecv, nil
+}
+
 func diskInventory(ctx context.Context) ([]protocol.DiskInfo, error) {
 	parts, err := disk.PartitionsWithContext(ctx, false)
 	if err != nil {

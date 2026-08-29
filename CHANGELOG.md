@@ -5,6 +5,33 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added: network traffic history (agent v0.2.0)
+
+- New per-device network traffic charts (sent/received, both total
+  system traffic and this agent's own control-channel overhead
+  separately) and a cross-device "Network usage" ranking page — "which
+  client is using how much bandwidth."
+- Unlike CPU/RAM/disk (pushed live every status interval), traffic is
+  sampled locally on the agent roughly once a minute, buffered in a new
+  local SQLite file (`internal/netmetrics`, pure-Go `modernc.org/sqlite`
+  so the existing one-line cross-compile keeps working unchanged — no
+  cgo, no per-platform C toolchain needed), and uploaded to the server in
+  batches every 5 minutes (configurable, `agent.network_upload_interval`)
+  — plus immediately on every reconnect, so a period offline delays
+  delivery rather than losing the data. New `network_metrics_batch`
+  protocol message; no protocol version bump needed since an older agent
+  simply never sends one.
+- New `device_network_metrics`/`device_network_metrics_hourly` tables
+  (separate from `device_metrics` — different sampling cadence, and
+  hourly rollup is a SUM of bytes transferred that hour rather than an
+  average, which is the more meaningful figure for a volume metric).
+  Dashboard-adjustable retention (Settings → Network traffic history
+  retention), shorter raw default (7 days) than CPU/RAM/disk given the
+  higher sample rate.
+- Requires updating installed agents to v0.2.0+ to actually start
+  collecting this — older agents keep working exactly as before, they
+  just won't have network charts until updated.
+
 ### Fixed: concurrent startups could race on database migrations
 
 - `internal/db.Migrate` checked "is this migration applied yet?" and

@@ -171,6 +171,47 @@ Agent -> Server `inventory_response`:
 }
 ```
 
+## 7a. Netzwerk-Traffic-Metriken
+
+Anders als `metrics_report` wird Netzwerk-Traffic agentseitig lokal
+gepuffert (siehe internal/netmetrics, ca. alle 60s ein Sample) und dann
+gebündelt als `network_metrics_batch` hochgeladen — Intervall dafür
+kommt vom Server via `hello_ack.network_upload_interval_seconds`
+(Standard 5min), unabhängig vom `status_interval` für §7. Ein Agent, der
+diesen Nachrichtentyp nicht kennt, sendet ihn einfach nie — kein
+Protokoll-Versionssprung nötig, siehe §3.
+
+```json
+{
+  "protocol": 1,
+  "type": "network_metrics_batch",
+  "message_id": "...",
+  "timestamp": "...",
+  "payload": {
+    "samples": [
+      {
+        "occurred_at": "...",
+        "interval_seconds": 60.2,
+        "bytes_sent_total": 61440,
+        "bytes_recv_total": 512000,
+        "bytes_sent_control": 890,
+        "bytes_recv_control": 2100
+      }
+    ]
+  }
+}
+```
+
+`*_total` = gesamter Netzwerk-Traffic des Geräts (alle Interfaces,
+kumulative OS-Zähler, agentseitig zu einem Delta pro Intervall
+umgerechnet). `*_control` = nur der Traffic dieses Agents auf dem
+Control-Channel zu diesem Server (Nachrichtennutzlast, keine
+TCP/TLS-Rohbytes — eine bewusste Näherung). Der Agent löscht ein
+lokal gepuffertes Sample erst, nachdem es erfolgreich in diese
+Nachricht verpackt und geschrieben wurde; bei Verbindungsverlust bleibt
+es liegen und wird beim nächsten Verbindungsaufbau sofort nachgeliefert
+(kein Warten auf das volle Upload-Intervall).
+
 ## 8. Generic Request Result
 
 Erfolgreich:

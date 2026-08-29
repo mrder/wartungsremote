@@ -16,9 +16,17 @@ import (
 	"github.com/google/uuid"
 
 	"wartungsremote/internal/config"
+	"wartungsremote/internal/netmetrics"
 	"wartungsremote/internal/platform"
 	"wartungsremote/internal/protocol"
 )
+
+// networkBatchSize caps how many buffered samples go into one
+// network_metrics_batch message, keeping it comfortably under
+// protocol.MaxEventBatchBytes even for a device that's been offline a
+// while; uploadNetworkMetrics sends as many batches as needed to drain
+// everything pending on each tick.
+const networkBatchSize = 500
 
 // agentSession bundles everything a single control-channel connection needs
 // to serve heartbeats, metrics, and remote-session/command dispatch
@@ -32,12 +40,21 @@ type agentSession struct {
 	sessions *sessionManager
 	files    *fileTransferManager
 	dataDir  string
+	netStore *netmetrics.Store
+	netBytes *netmetrics.ControlBytesCounter
 }
 
 func (a *agentSession) write(ctx context.Context, msgType websocket.MessageType, data []byte) error {
 	a.writeMu.Lock()
 	defer a.writeMu.Unlock()
-	return a.conn.Write(ctx, msgType, data)
+	err := a.conn.Write(ctx, msgType, data)
+	if err == nil && a.netBytes != nil {
+		// Message payload bytes, not raw wire bytes — see
+		// netmetrics.ControlBytesCounter's doc comment for why that's an
+		// accepted approximation here.
+		a.netBytes.AddSent(len(data))
+	}
+	return err
 }
 
 func (a *agentSession) writeEnvelope(ctx context.Context, msgType string, requestID *string, payload any) error {
@@ -62,7 +79,7 @@ func (a *agentSession) writeBinaryFrame(kind byte, streamID uuid.UUID, payload [
 // until the connection ends or ctx is cancelled. It returns nil only when
 // ctx is cancelled (graceful shutdown); any connection failure returns an
 // error so the caller's reconnect loop applies backoff.
-func runSession(ctx context.Context, serverURL, agentVersion string, identity Identity, provider platform.Provider, policy config.AgentPolicy, dataDir string, onConnected func()) error {
+func runSession(ctx context.Context, serverURL, agentVersion string, identity Identity, provider platform.Provider, policy config.AgentPolicy, dataDir string, netStore *netmetrics.Store, netBytes *netmetrics.ControlBytesCounter, onConnected func()) error {
 	wsURL := strings.Replace(strings.TrimRight(serverURL, "/"), "https://", "wss://", 1)
 	wsURL = strings.Replace(wsURL, "http://", "ws://", 1)
 	wsURL += "/api/v1/agent/control"
@@ -76,12 +93,12 @@ func runSession(ctx context.Context, serverURL, agentVersion string, identity Id
 	defer conn.CloseNow()
 	conn.SetReadLimit(int64(protocol.MaxInventoryBytes))
 
-	heartbeatInterval, statusInterval, err := handshake(ctx, conn, agentVersion, identity, provider)
+	heartbeatInterval, statusInterval, networkUploadInterval, err := handshake(ctx, conn, agentVersion, identity, provider)
 	if err != nil {
 		return err
 	}
 
-	as := &agentSession{conn: conn, provider: provider, policy: policy, sessions: newSessionManager(), files: newFileTransferManager(), dataDir: dataDir}
+	as := &agentSession{conn: conn, provider: provider, policy: policy, sessions: newSessionManager(), files: newFileTransferManager(), dataDir: dataDir, netStore: netStore, netBytes: netBytes}
 	defer as.sessions.closeAll()
 	defer as.files.closeAll()
 
@@ -98,9 +115,14 @@ func runSession(ctx context.Context, serverURL, agentVersion string, identity Id
 	defer heartbeatTicker.Stop()
 	statusTicker := time.NewTicker(statusInterval)
 	defer statusTicker.Stop()
+	networkUploadTicker := time.NewTicker(networkUploadInterval)
+	defer networkUploadTicker.Stop()
 
 	var seq int64
 	as.sendMetrics(ctx)
+	// Flush anything buffered locally while disconnected, immediately on
+	// (re)connect rather than waiting a full upload interval.
+	as.uploadNetworkMetrics(ctx)
 
 	for {
 		select {
@@ -119,6 +141,53 @@ func runSession(ctx context.Context, serverURL, agentVersion string, identity Id
 			}
 		case <-statusTicker.C:
 			as.sendMetrics(ctx)
+		case <-networkUploadTicker.C:
+			as.uploadNetworkMetrics(ctx)
+		}
+	}
+}
+
+// uploadNetworkMetrics drains everything currently buffered in netStore,
+// sending it as one or more network_metrics_batch messages, deleting each
+// batch locally only after it's been successfully written to the control
+// channel. Best-effort: a failure just leaves the rows for the next tick
+// (or the next connection's immediate flush) to retry, same reliability
+// bar as every other report on this channel (no ack tracking).
+func (a *agentSession) uploadNetworkMetrics(ctx context.Context) {
+	if a.netStore == nil {
+		return
+	}
+	for {
+		pending, err := a.netStore.Pending(ctx, networkBatchSize)
+		if err != nil {
+			slog.Warn("failed to read pending network samples", "error", err)
+			return
+		}
+		if len(pending) == 0 {
+			return
+		}
+
+		samples := make([]protocol.NetworkMetricsSample, len(pending))
+		for i, s := range pending {
+			samples[i] = protocol.NetworkMetricsSample{
+				OccurredAt:       s.OccurredAt,
+				IntervalSeconds:  s.IntervalSeconds,
+				BytesSentTotal:   s.BytesSentTotal,
+				BytesRecvTotal:   s.BytesRecvTotal,
+				BytesSentControl: s.BytesSentControl,
+				BytesRecvControl: s.BytesRecvControl,
+			}
+		}
+		if err := a.writeEnvelope(ctx, protocol.TypeNetworkMetricsBatch, nil, protocol.NetworkMetricsBatchPayload{Samples: samples}); err != nil {
+			slog.Warn("failed to upload network metrics batch", "error", err)
+			return
+		}
+		if err := a.netStore.DeleteUpTo(ctx, pending[len(pending)-1].ID); err != nil {
+			slog.Warn("failed to clear uploaded network samples", "error", err)
+			return
+		}
+		if len(pending) < networkBatchSize {
+			return
 		}
 	}
 }
@@ -173,25 +242,25 @@ func (a *agentSession) sendMetrics(ctx context.Context) {
 // handshake completes the control_challenge/hello/hello_ack exchange
 // described in docs/PROTOCOL.md §4 and the Ed25519 proof-of-possession
 // scheme implemented server-side in internal/controlhub.
-func handshake(ctx context.Context, conn *websocket.Conn, agentVersion string, identity Identity, provider platform.Provider) (heartbeatInterval, statusInterval time.Duration, err error) {
+func handshake(ctx context.Context, conn *websocket.Conn, agentVersion string, identity Identity, provider platform.Provider) (heartbeatInterval, statusInterval, networkUploadInterval time.Duration, err error) {
 	hsCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	_, raw, err := conn.Read(hsCtx)
 	if err != nil {
-		return 0, 0, fmt.Errorf("agentcore: read challenge: %w", err)
+		return 0, 0, 0, fmt.Errorf("agentcore: read challenge: %w", err)
 	}
 	env, err := protocol.Decode(raw)
 	if err != nil || env.Type != protocol.TypeControlChallenge {
-		return 0, 0, fmt.Errorf("agentcore: unexpected message instead of control_challenge")
+		return 0, 0, 0, fmt.Errorf("agentcore: unexpected message instead of control_challenge")
 	}
 	var challenge protocol.ControlChallengePayload
 	if err := protocol.DecodePayload(env, &challenge); err != nil {
-		return 0, 0, fmt.Errorf("agentcore: decode challenge: %w", err)
+		return 0, 0, 0, fmt.Errorf("agentcore: decode challenge: %w", err)
 	}
 	nonce, err := base64.StdEncoding.DecodeString(challenge.Nonce)
 	if err != nil {
-		return 0, 0, fmt.Errorf("agentcore: decode nonce: %w", err)
+		return 0, 0, 0, fmt.Errorf("agentcore: decode nonce: %w", err)
 	}
 
 	signature := identity.Sign(nonce)
@@ -208,23 +277,23 @@ func handshake(ctx context.Context, conn *websocket.Conn, agentVersion string, i
 		Signature:    base64.StdEncoding.EncodeToString(signature),
 	})
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	if err := conn.Write(hsCtx, websocket.MessageText, helloRaw); err != nil {
-		return 0, 0, fmt.Errorf("agentcore: send hello: %w", err)
+		return 0, 0, 0, fmt.Errorf("agentcore: send hello: %w", err)
 	}
 
 	_, ackRaw, err := conn.Read(hsCtx)
 	if err != nil {
-		return 0, 0, fmt.Errorf("agentcore: read hello_ack: %w", err)
+		return 0, 0, 0, fmt.Errorf("agentcore: read hello_ack: %w", err)
 	}
 	ackEnv, err := protocol.Decode(ackRaw)
 	if err != nil || ackEnv.Type != protocol.TypeHelloAck {
-		return 0, 0, fmt.Errorf("agentcore: authentication rejected by server")
+		return 0, 0, 0, fmt.Errorf("agentcore: authentication rejected by server")
 	}
 	var ack protocol.HelloAckPayload
 	if err := protocol.DecodePayload(ackEnv, &ack); err != nil {
-		return 0, 0, fmt.Errorf("agentcore: decode hello_ack: %w", err)
+		return 0, 0, 0, fmt.Errorf("agentcore: decode hello_ack: %w", err)
 	}
 
 	hb := time.Duration(ack.HeartbeatIntervalSeconds) * time.Second
@@ -235,7 +304,11 @@ func handshake(ctx context.Context, conn *websocket.Conn, agentVersion string, i
 	if status <= 0 {
 		status = 5 * time.Minute
 	}
-	return hb, status, nil
+	networkUpload := time.Duration(ack.NetworkUploadIntervalSeconds) * time.Second
+	if networkUpload <= 0 {
+		networkUpload = 5 * time.Minute
+	}
+	return hb, status, networkUpload, nil
 }
 
 func (a *agentSession) readLoop(ctx context.Context) error {
@@ -243,6 +316,9 @@ func (a *agentSession) readLoop(ctx context.Context) error {
 		msgType, raw, err := a.conn.Read(ctx)
 		if err != nil {
 			return fmt.Errorf("agentcore: connection closed: %w", err)
+		}
+		if a.netBytes != nil {
+			a.netBytes.AddRecv(len(raw))
 		}
 
 		if msgType == websocket.MessageBinary {

@@ -82,10 +82,11 @@ func NewRouter(deps Dependencies) (*Router, error) {
 
 	hubCtx, hubCancel := context.WithCancel(context.Background())
 	hub := controlhub.NewHub(devices, healthEngine, deps.Audit, controlhub.Timing{
-		HeartbeatInterval:   cfg.Agent.HeartbeatInterval,
-		ConnectionLostAfter: cfg.Agent.ConnectionLostAfter,
-		OfflineAfter:        cfg.Agent.OfflineAfter,
-		StatusInterval:      cfg.Agent.StatusInterval,
+		HeartbeatInterval:     cfg.Agent.HeartbeatInterval,
+		ConnectionLostAfter:   cfg.Agent.ConnectionLostAfter,
+		OfflineAfter:          cfg.Agent.OfflineAfter,
+		StatusInterval:        cfg.Agent.StatusInterval,
+		NetworkUploadInterval: cfg.Agent.NetworkUploadInterval,
 	}, trustedProxies)
 	go hub.Run(hubCtx)
 
@@ -121,7 +122,7 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	}
 
 	settingsRepo := appsettings.NewRepo(deps.Pool)
-	go device.RunMetricsRetentionSweeper(hubCtx, devices, settingsRepo, cfg.Metrics.RawRetention, cfg.Metrics.HourlyRetention, 10*time.Minute)
+	go device.RunMetricsRetentionSweeper(hubCtx, devices, settingsRepo, cfg.Metrics.RawRetention, cfg.Metrics.HourlyRetention, cfg.Metrics.NetworkRawRetention, cfg.Metrics.NetworkHourlyRetention, 10*time.Minute)
 
 	telegramRepo := notify.NewTelegramRepo(deps.Pool, deps.Config.Secrets.TOTPEncryptionKey)
 
@@ -238,6 +239,8 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	protected.HandleFunc("GET /api/v1/devices/{id}/health", h.handleDeviceHealth)
 	protected.HandleFunc("GET /api/v1/devices/{id}/ip-history", h.handleDeviceIPHistory)
 	protected.HandleFunc("GET /api/v1/devices/{id}/metrics", h.handleDeviceMetrics)
+	protected.HandleFunc("GET /api/v1/devices/{id}/network-metrics", h.handleDeviceNetworkMetrics)
+	protected.HandleFunc("GET /api/v1/network-usage", h.handleNetworkUsageSummary)
 	protected.HandleFunc("POST /api/v1/devices/{id}/revoke", h.handleRevokeDevice)
 	protected.HandleFunc("GET /api/v1/devices/{id}/audit", h.handleDeviceAuditLog)
 	protected.HandleFunc("GET /api/v1/audit", h.handleAuditLog)
@@ -292,6 +295,8 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	protected.HandleFunc("POST /api/v1/devices/{id}/support-credential/rotate", h.handleRotateSupportCredential)
 	protected.HandleFunc("GET /api/v1/settings/retention", h.handleGetRetentionSettings)
 	protected.HandleFunc("PATCH /api/v1/settings/retention", h.handleSetRetentionSettings)
+	protected.HandleFunc("GET /api/v1/settings/network-retention", h.handleGetNetworkRetentionSettings)
+	protected.HandleFunc("PATCH /api/v1/settings/network-retention", h.handleSetNetworkRetentionSettings)
 	protected.HandleFunc("GET /api/v1/settings/support-credential-rotation", h.handleGetSupportCredentialRotationSettings)
 	protected.HandleFunc("PATCH /api/v1/settings/support-credential-rotation", h.handleSetSupportCredentialRotationSettings)
 	protected.HandleFunc("GET /api/v1/settings/telegram", h.handleGetTelegramSettings)

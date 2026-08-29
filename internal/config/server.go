@@ -37,8 +37,15 @@ type ServerConfig struct {
 		ConnectionLostAfter time.Duration `yaml:"connection_lost_after"`
 		OfflineAfter        time.Duration `yaml:"offline_after"`
 		StatusInterval      time.Duration `yaml:"status_interval"`
-		EnrollmentTTL       time.Duration `yaml:"enrollment_ttl"`
-		ReconnectMaxBackoff time.Duration `yaml:"reconnect_max_backoff"`
+		// NetworkUploadInterval controls how often an agent flushes its
+		// locally-buffered network traffic samples (docs/AGENT.md
+		// "Netzwerk-Traffic-Metriken") — deliberately separate from
+		// StatusInterval since network samples are collected agent-side
+		// far more often (every internal/netmetrics.SampleInterval) than
+		// they're uploaded; this just governs upload frequency/server load.
+		NetworkUploadInterval time.Duration `yaml:"network_upload_interval"`
+		EnrollmentTTL         time.Duration `yaml:"enrollment_ttl"`
+		ReconnectMaxBackoff   time.Duration `yaml:"reconnect_max_backoff"`
 	} `yaml:"agent"`
 
 	Relay struct {
@@ -70,6 +77,12 @@ type ServerConfig struct {
 	Metrics struct {
 		RawRetention    time.Duration `yaml:"raw_retention"`
 		HourlyRetention time.Duration `yaml:"hourly_retention"`
+		// Network*Retention govern device_network_metrics[_hourly]
+		// separately from the above, since traffic samples are collected
+		// at a much higher frequency (every internal/netmetrics.SampleInterval)
+		// than the CPU/RAM/disk status reports the above two apply to.
+		NetworkRawRetention    time.Duration `yaml:"network_raw_retention"`
+		NetworkHourlyRetention time.Duration `yaml:"network_hourly_retention"`
 	} `yaml:"metrics"`
 
 	// Help points at the directory containing DASHBOARD_HELP.md, rendered
@@ -121,6 +134,7 @@ func Default() ServerConfig {
 	c.Agent.ConnectionLostAfter = 120 * time.Second
 	c.Agent.OfflineAfter = 300 * time.Second
 	c.Agent.StatusInterval = 5 * time.Minute
+	c.Agent.NetworkUploadInterval = 5 * time.Minute
 	c.Agent.EnrollmentTTL = 30 * time.Minute
 	c.Agent.ReconnectMaxBackoff = 5 * time.Minute
 	c.Relay.TicketTTL = 60 * time.Second
@@ -136,6 +150,13 @@ func Default() ServerConfig {
 	c.Security.Argon2Parallelism = 1
 	c.Metrics.RawRetention = 30 * 24 * time.Hour
 	c.Metrics.HourlyRetention = 365 * 24 * time.Hour
+	// Shorter raw default than CPU/RAM/disk: at one sample/minute per
+	// device (vs. one per 5 minutes), 30 days would be 5x the row volume
+	// for comparable resolution depth; 7 days of raw plus a year of
+	// hourly rollups covers both "what happened this week" and long-term
+	// trend without that cost.
+	c.Metrics.NetworkRawRetention = 7 * 24 * time.Hour
+	c.Metrics.NetworkHourlyRetention = 365 * 24 * time.Hour
 	c.Help.ContentDir = "docs"
 	return c
 }

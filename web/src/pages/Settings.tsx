@@ -7,9 +7,12 @@ export default function Settings() {
   const { user } = useAuth()
   const [rawHours, setRawHours] = useState('')
   const [hourlyHours, setHourlyHours] = useState('')
+  const [networkRawHours, setNetworkRawHours] = useState('')
+  const [networkHourlyHours, setNetworkHourlyHours] = useState('')
   const [rotationDays, setRotationDays] = useState('')
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
+  const [networkSaved, setNetworkSaved] = useState(false)
   const [rotationSaved, setRotationSaved] = useState(false)
 
   const [telegramConfigured, setTelegramConfigured] = useState(false)
@@ -28,6 +31,13 @@ export default function Settings() {
       const s = await SettingsApi.getRetention()
       setRawHours(String(s.raw_retention_hours))
       setHourlyHours(String(s.hourly_retention_hours))
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to load settings')
+    }
+    try {
+      const n = await SettingsApi.getNetworkRetention()
+      setNetworkRawHours(String(n.raw_retention_hours))
+      setNetworkHourlyHours(String(n.hourly_retention_hours))
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load settings')
     }
@@ -58,6 +68,18 @@ export default function Settings() {
     try {
       await SettingsApi.setRetention(Number(rawHours), Number(hourlyHours))
       setSaved(true)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to save settings')
+    }
+  }
+
+  async function saveNetworkRetention(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    setNetworkSaved(false)
+    try {
+      await SettingsApi.setNetworkRetention(Number(networkRawHours), Number(networkHourlyHours))
+      setNetworkSaved(true)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to save settings')
     }
@@ -157,6 +179,46 @@ export default function Settings() {
           />
           {hourlyHours && !isNaN(Number(hourlyHours)) && (
             <span style={{ marginLeft: '0.5rem' }}>({(Number(hourlyHours) / 24).toFixed(1)} days)</span>
+          )}
+        </label>
+        <button type="submit">Save</button>
+      </form>
+
+      <h3>Network traffic history retention</h3>
+      <p>
+        Same idea, but for network traffic history specifically — it's collected far more often
+        (roughly once a minute per device, buffered locally on the agent and uploaded in batches)
+        than CPU/RAM/disk, so it gets its own, shorter default raw retention to keep the row volume
+        reasonable; the hourly rollup still covers the long term.
+      </p>
+      {networkSaved && <p>Saved.</p>}
+      <form onSubmit={saveNetworkRetention} className="toolbar" style={{ flexWrap: 'wrap' }}>
+        <label>
+          Raw retention (hours):{' '}
+          <input
+            type="number"
+            min="1"
+            value={networkRawHours}
+            onChange={(e) => setNetworkRawHours(e.target.value)}
+            required
+            style={{ width: '6rem' }}
+          />
+          {networkRawHours && !isNaN(Number(networkRawHours)) && (
+            <span style={{ marginLeft: '0.5rem' }}>({(Number(networkRawHours) / 24).toFixed(1)} days)</span>
+          )}
+        </label>
+        <label>
+          Hourly-total retention (hours):{' '}
+          <input
+            type="number"
+            min="1"
+            value={networkHourlyHours}
+            onChange={(e) => setNetworkHourlyHours(e.target.value)}
+            required
+            style={{ width: '6rem' }}
+          />
+          {networkHourlyHours && !isNaN(Number(networkHourlyHours)) && (
+            <span style={{ marginLeft: '0.5rem' }}>({(Number(networkHourlyHours) / 24).toFixed(1)} days)</span>
           )}
         </label>
         <button type="submit">Save</button>

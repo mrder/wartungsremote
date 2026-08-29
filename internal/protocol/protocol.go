@@ -17,34 +17,35 @@ const (
 
 // Message types.
 const (
-	TypeHello                  = "hello"
+	TypeHello                   = "hello"
 	TypeHelloAck                = "hello_ack"
 	TypeHeartbeat               = "heartbeat"
-	TypeHeartbeatAck             = "heartbeat_ack"
+	TypeHeartbeatAck            = "heartbeat_ack"
 	TypeInventoryRequest        = "inventory_request"
 	TypeInventoryResponse       = "inventory_response"
 	TypeMetricsReport           = "metrics_report"
 	TypeCommandResult           = "command_result"
-	TypeSessionOpen              = "session_open"
-	TypeSessionOpenResult        = "session_open_result"
-	TypeSessionClose             = "session_close"
-	TypeSessionPrivilegeUpdate   = "session_privilege_update"
-	TypeTerminalOpen             = "terminal_open"
-	TypeTerminalResize           = "terminal_resize"
-	TypeTerminalSignal           = "terminal_signal"
-	TypeTerminalClose            = "terminal_close"
-	TypeTunnelPrepare            = "tunnel_prepare"
-	TypeProtocolError            = "protocol_error"
-	TypeControlChallenge         = "control_challenge"
-	TypeDeviceCommand            = "device_command"
-	TypeSupportCredentialReport  = "support_credential_report"
+	TypeSessionOpen             = "session_open"
+	TypeSessionOpenResult       = "session_open_result"
+	TypeSessionClose            = "session_close"
+	TypeSessionPrivilegeUpdate  = "session_privilege_update"
+	TypeTerminalOpen            = "terminal_open"
+	TypeTerminalResize          = "terminal_resize"
+	TypeTerminalSignal          = "terminal_signal"
+	TypeTerminalClose           = "terminal_close"
+	TypeTunnelPrepare           = "tunnel_prepare"
+	TypeProtocolError           = "protocol_error"
+	TypeControlChallenge        = "control_challenge"
+	TypeDeviceCommand           = "device_command"
+	TypeSupportCredentialReport = "support_credential_report"
+	TypeNetworkMetricsBatch     = "network_metrics_batch"
 )
 
 // Binary stream frame kinds, per docs/PROTOCOL.md §11.
 const (
 	StreamKindTerminal byte = 1
 	StreamKindTunnel   byte = 2
-	StreamKindFile      byte = 3
+	StreamKindFile     byte = 3
 )
 
 // Error codes per PROTOCOL.md §9.
@@ -70,12 +71,12 @@ const (
 
 // Envelope is the mandatory outer structure for every control message.
 type Envelope struct {
-	Protocol  int             `json:"protocol"`
-	Type      string          `json:"type"`
-	MessageID string          `json:"message_id"`
-	RequestID *string         `json:"request_id,omitempty"`
-	Timestamp time.Time       `json:"timestamp"`
-	Payload   RawPayload      `json:"payload"`
+	Protocol  int        `json:"protocol"`
+	Type      string     `json:"type"`
+	MessageID string     `json:"message_id"`
+	RequestID *string    `json:"request_id,omitempty"`
+	Timestamp time.Time  `json:"timestamp"`
+	Payload   RawPayload `json:"payload"`
 }
 
 // RawPayload defers payload decoding until the message Type is known.
@@ -89,31 +90,39 @@ type RawPayload = []byte
 // short-lived). This binds control-channel authentication to the device
 // identity established at enrollment without requiring mTLS infrastructure.
 type ControlChallengePayload struct {
-	Nonce     string `json:"nonce"` // base64, 32 random bytes
+	Nonce     string    `json:"nonce"` // base64, 32 random bytes
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
 // HelloPayload is sent by the agent immediately after receiving ControlChallengePayload.
 type HelloPayload struct {
-	DeviceID       string   `json:"device_id"`
-	InstallID      string   `json:"install_id"`
-	AgentVersion   string   `json:"agent_version"`
-	OS             string   `json:"os"`
-	Arch           string   `json:"arch"`
-	Capabilities   []string `json:"capabilities"`
-	BootID         string   `json:"boot_id"`
-	Nonce          string   `json:"nonce"`     // echoes ControlChallengePayload.Nonce
-	Signature      string   `json:"signature"` // base64 Ed25519 signature over the raw nonce bytes
+	DeviceID     string   `json:"device_id"`
+	InstallID    string   `json:"install_id"`
+	AgentVersion string   `json:"agent_version"`
+	OS           string   `json:"os"`
+	Arch         string   `json:"arch"`
+	Capabilities []string `json:"capabilities"`
+	BootID       string   `json:"boot_id"`
+	Nonce        string   `json:"nonce"`     // echoes ControlChallengePayload.Nonce
+	Signature    string   `json:"signature"` // base64 Ed25519 signature over the raw nonce bytes
 }
 
 // HelloAckPayload is the server's response to Hello.
 type HelloAckPayload struct {
-	ConnectionID              string    `json:"connection_id"`
-	ServerTime                time.Time `json:"server_time"`
-	HeartbeatIntervalSeconds  int       `json:"heartbeat_interval_seconds"`
-	StatusIntervalSeconds     int       `json:"status_interval_seconds"`
-	MaxMessageBytes           int       `json:"max_message_bytes"`
-	MinimumAgentVersion       string    `json:"minimum_agent_version"`
+	ConnectionID             string    `json:"connection_id"`
+	ServerTime               time.Time `json:"server_time"`
+	HeartbeatIntervalSeconds int       `json:"heartbeat_interval_seconds"`
+	StatusIntervalSeconds    int       `json:"status_interval_seconds"`
+	MaxMessageBytes          int       `json:"max_message_bytes"`
+	MinimumAgentVersion      string    `json:"minimum_agent_version"`
+	// NetworkUploadIntervalSeconds controls how often the agent flushes its
+	// locally-buffered network samples (see protocol.NetworkMetricsBatchPayload)
+	// — server-controlled like StatusIntervalSeconds because it's what
+	// governs how much control-channel traffic this generates, unlike the
+	// local sampling cadence itself which is a purely agent-local concern.
+	// An older agent that doesn't understand network_metrics_batch simply
+	// never sends one; this field is harmless for it to receive.
+	NetworkUploadIntervalSeconds int `json:"network_upload_interval_seconds"`
 }
 
 // HeartbeatPayload is sent periodically by the agent.
@@ -209,6 +218,30 @@ type MetricsReportPayload struct {
 type SupportCredentialReportPayload struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+}
+
+// NetworkMetricsSample is one buffered local observation, covering the
+// period IntervalSeconds ending at OccurredAt. BytesSentTotal/RecvTotal
+// are system-wide (all interfaces); BytesSentControl/RecvControl are just
+// this agent's own control-channel traffic to this server — see
+// docs/AGENT.md "Netzwerk-Traffic-Metriken" for why both are tracked
+// separately (general bandwidth use vs. this tool's own overhead).
+type NetworkMetricsSample struct {
+	OccurredAt       time.Time `json:"occurred_at"`
+	IntervalSeconds  float64   `json:"interval_seconds"`
+	BytesSentTotal   uint64    `json:"bytes_sent_total"`
+	BytesRecvTotal   uint64    `json:"bytes_recv_total"`
+	BytesSentControl uint64    `json:"bytes_sent_control"`
+	BytesRecvControl uint64    `json:"bytes_recv_control"`
+}
+
+// NetworkMetricsBatchPayload carries a batch of locally-buffered network
+// samples, sent every NetworkUploadIntervalSeconds (and once immediately
+// after connecting, to flush anything buffered while offline). The agent
+// deletes its local copy of each sample only after this message has been
+// successfully written to the control channel — see internal/netmetrics.
+type NetworkMetricsBatchPayload struct {
+	Samples []NetworkMetricsSample `json:"samples"`
 }
 
 // CommandResultPayload is a generic success/error response envelope.

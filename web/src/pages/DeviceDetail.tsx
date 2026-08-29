@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { DeviceApi, CustomerApi, ReleaseApi, AuditApi, ApiError, type Device, type AuditEntry, type Customer, type Group, type MaintenanceSession, type IPHistoryEntry } from '../api'
+import { DeviceApi, CustomerApi, ReleaseApi, AuditApi, ApiError, type Device, type AuditEntry, type Customer, type Group, type MaintenanceSession, type IPHistoryEntry, type NetworkMetricsPoint } from '../api'
 import StatusBadge from '../components/StatusBadge'
 import TerminalView from '../components/TerminalView'
 import TunnelPanel from '../components/TunnelPanel'
@@ -21,6 +21,7 @@ export default function DeviceDetail() {
   const [tab, setTab] = useState<Tab>('overview')
   const [audit, setAudit] = useState<AuditEntry[]>([])
   const [metrics, setMetrics] = useState<Array<{ observed_at: string; cpu_percent: number; memory_used_bytes: number; memory_total_bytes: number; disk_used_bytes: number; disk_total_bytes: number }>>([])
+  const [networkMetrics, setNetworkMetrics] = useState<NetworkMetricsPoint[]>([])
   const [resolution, setResolution] = useState<'raw' | 'hourly'>('raw')
   const [maintenanceHistory, setMaintenanceHistory] = useState<MaintenanceSession[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -51,7 +52,10 @@ export default function DeviceDetail() {
   useEffect(() => {
     if (!id) return
     if (tab === 'audit') DeviceApi.audit(id).then((v) => setAudit(v ?? [])).catch(() => setAudit([]))
-    if (tab === 'monitoring') DeviceApi.metrics(id, resolution).then((v) => setMetrics(v ?? [])).catch(() => setMetrics([]))
+    if (tab === 'monitoring') {
+      DeviceApi.metrics(id, resolution).then((v) => setMetrics(v ?? [])).catch(() => setMetrics([]))
+      DeviceApi.networkMetrics(id, resolution).then((v) => setNetworkMetrics(v ?? [])).catch(() => setNetworkMetrics([]))
+    }
     if (tab === 'maintenance') DeviceApi.maintenance(id).then((v) => setMaintenanceHistory(v ?? [])).catch(() => setMaintenanceHistory([]))
     if (tab === 'overview') {
       CustomerApi.list().then((v) => setCustomers(v ?? [])).catch(() => setCustomers([]))
@@ -262,6 +266,34 @@ export default function DeviceDetail() {
             points={metrics
               .filter((m) => m.disk_total_bytes > 0)
               .map((m) => ({ t: new Date(m.observed_at).getTime(), v: (m.disk_used_bytes / m.disk_total_bytes) * 100 }))}
+          />
+          <h4 style={{ marginTop: '1.5rem', marginBottom: 0 }}>Network</h4>
+          <p style={{ color: 'var(--muted, #888)', fontSize: '0.85rem' }}>
+            "Total" is all network traffic on the device; "to server" is just this agent's own
+            control-channel overhead — useful for telling general bandwidth use apart from what this
+            tool itself adds.
+          </p>
+          <MetricsChart
+            title="Sent (total)"
+            unit=" KB/s"
+            points={networkMetrics.map((m) => ({ t: new Date(m.observed_at).getTime(), v: m.bytes_sent_total_per_sec / 1024 }))}
+          />
+          <MetricsChart
+            title="Received (total)"
+            unit=" KB/s"
+            points={networkMetrics.map((m) => ({ t: new Date(m.observed_at).getTime(), v: m.bytes_recv_total_per_sec / 1024 }))}
+          />
+          <MetricsChart
+            title="Sent (to server)"
+            unit=" KB/s"
+            color="var(--accent-2, #ff9e4a)"
+            points={networkMetrics.map((m) => ({ t: new Date(m.observed_at).getTime(), v: m.bytes_sent_control_per_sec / 1024 }))}
+          />
+          <MetricsChart
+            title="Received (to server)"
+            unit=" KB/s"
+            color="var(--accent-2, #ff9e4a)"
+            points={networkMetrics.map((m) => ({ t: new Date(m.observed_at).getTime(), v: m.bytes_recv_control_per_sec / 1024 }))}
           />
           <table className="device-table">
             <thead><tr><th>Time</th><th>CPU %</th><th>RAM used/total</th><th>Disk used/total</th></tr></thead>

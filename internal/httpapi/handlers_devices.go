@@ -82,22 +82,22 @@ func (h *handlers) handleListDevices(w http.ResponseWriter, r *http.Request) {
 
 func deviceSummary(d device.Device) map[string]any {
 	return map[string]any{
-		"id":            d.ID,
-		"install_id":    d.InstallID,
-		"customer_id":   d.CustomerID,
-		"group_id":      d.GroupID,
-		"display_name":  d.DisplayName,
-		"hostname":      d.Hostname,
-		"os_family":     d.OSFamily,
-		"os_name":       d.OSName,
-		"os_version":    d.OSVersion,
-		"architecture":  d.Architecture,
-		"agent_version": d.AgentVersion,
-		"status":        d.Status,
-		"health":        d.Health,
+		"id":             d.ID,
+		"install_id":     d.InstallID,
+		"customer_id":    d.CustomerID,
+		"group_id":       d.GroupID,
+		"display_name":   d.DisplayName,
+		"hostname":       d.Hostname,
+		"os_family":      d.OSFamily,
+		"os_name":        d.OSName,
+		"os_version":     d.OSVersion,
+		"architecture":   d.Architecture,
+		"agent_version":  d.AgentVersion,
+		"status":         d.Status,
+		"health":         d.Health,
 		"health_reasons": d.HealthReasons,
-		"tags":          d.Tags,
-		"last_seen_at":  d.LastSeenAt,
+		"tags":           d.Tags,
+		"last_seen_at":   d.LastSeenAt,
 		"last_public_ip": d.LastPublicIP,
 	}
 }
@@ -137,9 +137,9 @@ func (h *handlers) handleGetDevice(w http.ResponseWriter, r *http.Request) {
 }
 
 type patchDeviceRequest struct {
-	DisplayName *string  `json:"display_name"`
-	CustomerID  *string  `json:"customer_id"`
-	GroupID     *string  `json:"group_id"`
+	DisplayName *string   `json:"display_name"`
+	CustomerID  *string   `json:"customer_id"`
+	GroupID     *string   `json:"group_id"`
 	Tags        *[]string `json:"tags"`
 }
 
@@ -280,6 +280,114 @@ func (h *handlers) handleDeviceMetrics(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, out, nil)
+}
+
+// networkPointJSON converts a raw or hourly-rolled-up network metrics
+// point into its API representation, computing throughput (bytes/sec)
+// server-side from the stored byte counts and interval so the frontend
+// never has to guess at a nominal sample interval — see
+// migrations/0010_network_metrics.sql for why interval_seconds is stored
+// explicitly rather than assumed.
+func networkPointJSON(p device.NetworkMetricsPoint) map[string]any {
+	rate := func(bytes int64) float64 {
+		if p.IntervalSeconds <= 0 {
+			return 0
+		}
+		return float64(bytes) / p.IntervalSeconds
+	}
+	return map[string]any{
+		"observed_at":                p.ObservedAt,
+		"bytes_sent_total":           p.BytesSentTotal,
+		"bytes_recv_total":           p.BytesRecvTotal,
+		"bytes_sent_control":         p.BytesSentControl,
+		"bytes_recv_control":         p.BytesRecvControl,
+		"bytes_sent_total_per_sec":   rate(p.BytesSentTotal),
+		"bytes_recv_total_per_sec":   rate(p.BytesRecvTotal),
+		"bytes_sent_control_per_sec": rate(p.BytesSentControl),
+		"bytes_recv_control_per_sec": rate(p.BytesRecvControl),
+	}
+}
+
+func (h *handlers) handleDeviceNetworkMetrics(w http.ResponseWriter, r *http.Request) {
+	d, ok := h.loadDeviceWithAccess(w, r, authpkg.PermMonitoringRead)
+	if !ok {
+		return
+	}
+	q := r.URL.Query()
+	resolution := q.Get("resolution")
+	if resolution == "" {
+		resolution = "raw"
+	}
+	to := time.Now().UTC()
+	defaultWindow := 24 * time.Hour
+	if resolution == "hourly" {
+		defaultWindow = 30 * 24 * time.Hour
+	}
+	from := to.Add(-defaultWindow)
+	if v := q.Get("from"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			from = t
+		}
+	}
+	if v := q.Get("to"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			to = t
+		}
+	}
+
+	var points []device.NetworkMetricsPoint
+	var err error
+	switch resolution {
+	case "hourly":
+		points, err = h.devices.HourlyNetworkMetrics(r.Context(), d.ID, from, to, 1000)
+	default:
+		points, err = h.devices.RecentNetworkMetrics(r.Context(), d.ID, from, to, 1000)
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to load network metrics")
+		return
+	}
+	out := make([]map[string]any, 0, len(points))
+	for _, p := range points {
+		out = append(out, networkPointJSON(p))
+	}
+	writeJSON(w, http.StatusOK, out, nil)
+}
+
+// handleNetworkUsageSummary answers "which client is using how much
+// bandwidth" — ranked totals across every device over a recent window
+// (docs/API.md §6), read from the raw table so `hours` should stay
+// within the configured raw retention.
+func (h *handlers) handleNetworkUsageSummary(w http.ResponseWriter, r *http.Request) {
+	grants := authpkg.GrantsFromContext(r.Context())
+	if !authpkg.HasAnyGrant(grants, authpkg.PermMonitoringRead) {
+		writeErr(w, http.StatusForbidden, "permission_denied", "Not permitted")
+		return
+	}
+	hours := 24
+	if v := r.URL.Query().Get("hours"); v != "" {
+		if n, err := time.ParseDuration(v + "h"); err == nil && n > 0 {
+			hours = int(n.Hours())
+		}
+	}
+	since := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
+	totals, err := h.devices.NetworkUsageSummary(r.Context(), since)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to load network usage summary")
+		return
+	}
+	out := make([]map[string]any, 0, len(totals))
+	for _, t := range totals {
+		out = append(out, map[string]any{
+			"device_id":          t.DeviceID,
+			"display_name":       t.DisplayName,
+			"bytes_sent_total":   t.BytesSentTotal,
+			"bytes_recv_total":   t.BytesRecvTotal,
+			"bytes_sent_control": t.BytesSentControl,
+			"bytes_recv_control": t.BytesRecvControl,
+		})
+	}
+	writeJSON(w, http.StatusOK, out, map[string]any{"since": since, "hours": hours})
 }
 
 func (h *handlers) handleRevokeDevice(w http.ResponseWriter, r *http.Request) {

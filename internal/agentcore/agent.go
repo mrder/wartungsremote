@@ -7,10 +7,12 @@ import (
 	"context"
 	"log/slog"
 	"math/rand"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"wartungsremote/internal/config"
+	"wartungsremote/internal/netmetrics"
 	"wartungsremote/internal/platform"
 )
 
@@ -31,6 +33,22 @@ const (
 // actually talk to the server, without tangling that concern into the
 // per-reconnect backoff-reset callback below.
 func Run(ctx context.Context, serverURL, agentVersion string, identity Identity, provider platform.Provider, policy config.AgentPolicy, dataDir string, onFirstConnect func()) {
+	var netStore *netmetrics.Store
+	var netBytes = &netmetrics.ControlBytesCounter{}
+	if dataDir != "" {
+		store, err := netmetrics.Open(filepath.Join(dataDir, "netmetrics.db"))
+		if err != nil {
+			// Network traffic history is a nice-to-have, not a reason to
+			// refuse to run the agent at all — every other capability
+			// (terminal, files, remote support...) works fine without it.
+			slog.Error("failed to open local network metrics buffer; network traffic history will not be collected this run", "error", err)
+		} else {
+			netStore = store
+			defer store.Close()
+			go netmetrics.RunSampler(ctx, store, provider, netBytes)
+		}
+	}
+
 	backoff := minBackoff
 	var firstConnectOnce sync.Once
 	for {
@@ -38,7 +56,7 @@ func Run(ctx context.Context, serverURL, agentVersion string, identity Identity,
 			return
 		}
 		connected := false
-		err := runSession(ctx, serverURL, agentVersion, identity, provider, policy, dataDir, func() {
+		err := runSession(ctx, serverURL, agentVersion, identity, provider, policy, dataDir, netStore, netBytes, func() {
 			connected = true
 			backoff = minBackoff
 			if onFirstConnect != nil {

@@ -32,34 +32,34 @@ const (
 type Health string
 
 const (
-	HealthHealthy Health = "healthy"
-	HealthWarning Health = "warning"
+	HealthHealthy  Health = "healthy"
+	HealthWarning  Health = "warning"
 	HealthCritical Health = "critical"
-	HealthOffline Health = "offline"
-	HealthUnknown Health = "unknown"
+	HealthOffline  Health = "offline"
+	HealthUnknown  Health = "unknown"
 )
 
 type Device struct {
-	ID                uuid.UUID
-	InstallID         uuid.UUID
-	CustomerID        *uuid.UUID
-	GroupID           *uuid.UUID
-	DisplayName       string
-	Hostname          string
-	OSFamily          string
-	OSName            string
-	OSVersion         string
-	Architecture      string
-	AgentVersion      string
-	Status            Status
-	Health            Health
-	HealthReasons     []string
-	Tags              []string
-	LastSeenAt        *time.Time
-	LastPublicIP      string
-	CredentialStatus  string
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID               uuid.UUID
+	InstallID        uuid.UUID
+	CustomerID       *uuid.UUID
+	GroupID          *uuid.UUID
+	DisplayName      string
+	Hostname         string
+	OSFamily         string
+	OSName           string
+	OSVersion        string
+	Architecture     string
+	AgentVersion     string
+	Status           Status
+	Health           Health
+	HealthReasons    []string
+	Tags             []string
+	LastSeenAt       *time.Time
+	LastPublicIP     string
+	CredentialStatus string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type Repo struct {
@@ -395,6 +395,181 @@ func (r *Repo) RecordMetrics(ctx context.Context, id uuid.UUID, cpuPercent float
 		return fmt.Errorf("device: record metrics: %w", err)
 	}
 	return nil
+}
+
+// NetworkMetricsPoint is one row of network traffic history, raw or
+// hourly-rolled-up (BucketStart == ObservedAt for raw rows).
+type NetworkMetricsPoint struct {
+	ObservedAt       time.Time
+	IntervalSeconds  float64
+	BytesSentTotal   int64
+	BytesRecvTotal   int64
+	BytesSentControl int64
+	BytesRecvControl int64
+}
+
+// RecordNetworkMetricsBatch bulk-inserts a batch of locally-buffered
+// agent samples (protocol.NetworkMetricsBatchPayload) in one round trip.
+func (r *Repo) RecordNetworkMetricsBatch(ctx context.Context, id uuid.UUID, samples []protocol.NetworkMetricsSample) error {
+	if len(samples) == 0 {
+		return nil
+	}
+	batch := &pgx.Batch{}
+	for _, s := range samples {
+		batch.Queue(`
+			INSERT INTO device_network_metrics
+				(device_id, observed_at, interval_seconds, bytes_sent_total, bytes_recv_total, bytes_sent_control, bytes_recv_control)
+			VALUES ($1,$2,$3,$4,$5,$6,$7)
+		`, id, s.OccurredAt, s.IntervalSeconds, int64(s.BytesSentTotal), int64(s.BytesRecvTotal), int64(s.BytesSentControl), int64(s.BytesRecvControl))
+	}
+	br := r.pool.SendBatch(ctx, batch)
+	defer br.Close()
+	for range samples {
+		if _, err := br.Exec(); err != nil {
+			return fmt.Errorf("device: record network metrics batch: %w", err)
+		}
+	}
+	return nil
+}
+
+// RecentNetworkMetrics returns raw network samples in a time range.
+func (r *Repo) RecentNetworkMetrics(ctx context.Context, id uuid.UUID, from, to time.Time, limit int) ([]NetworkMetricsPoint, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 2000
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT observed_at, interval_seconds, bytes_sent_total, bytes_recv_total, bytes_sent_control, bytes_recv_control
+		FROM device_network_metrics
+		WHERE device_id = $1 AND observed_at BETWEEN $2 AND $3
+		ORDER BY observed_at DESC
+		LIMIT $4
+	`, id, from, to, limit)
+	if err != nil {
+		return nil, fmt.Errorf("device: recent network metrics: %w", err)
+	}
+	defer rows.Close()
+
+	var out []NetworkMetricsPoint
+	for rows.Next() {
+		var p NetworkMetricsPoint
+		if err := rows.Scan(&p.ObservedAt, &p.IntervalSeconds, &p.BytesSentTotal, &p.BytesRecvTotal, &p.BytesSentControl, &p.BytesRecvControl); err != nil {
+			return nil, fmt.Errorf("device: scan network metrics point: %w", err)
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// HourlyNetworkMetrics returns hourly-summed network traffic points —
+// IntervalSeconds/byte fields here are the hour's totals (see
+// migrations/0010_network_metrics.sql), used to compute an accurate
+// average throughput for the whole hour.
+func (r *Repo) HourlyNetworkMetrics(ctx context.Context, id uuid.UUID, from, to time.Time, limit int) ([]NetworkMetricsPoint, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 2000
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT bucket_start, sum_interval_seconds, sum_bytes_sent_total, sum_bytes_recv_total, sum_bytes_sent_control, sum_bytes_recv_control
+		FROM device_network_metrics_hourly
+		WHERE device_id = $1 AND bucket_start BETWEEN $2 AND $3
+		ORDER BY bucket_start DESC
+		LIMIT $4
+	`, id, from, to, limit)
+	if err != nil {
+		return nil, fmt.Errorf("device: hourly network metrics: %w", err)
+	}
+	defer rows.Close()
+
+	var out []NetworkMetricsPoint
+	for rows.Next() {
+		var p NetworkMetricsPoint
+		if err := rows.Scan(&p.ObservedAt, &p.IntervalSeconds, &p.BytesSentTotal, &p.BytesRecvTotal, &p.BytesSentControl, &p.BytesRecvControl); err != nil {
+			return nil, fmt.Errorf("device: scan hourly network metrics point: %w", err)
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// RollupHourlyNetworkMetrics upserts hourly SUM aggregates for every raw
+// device_network_metrics row older than the current hour boundary —
+// SUM rather than avg (unlike RollupHourlyMetrics) because "total bytes
+// this hour" is the meaningful figure for a volume metric.
+func (r *Repo) RollupHourlyNetworkMetrics(ctx context.Context) error {
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO device_network_metrics_hourly
+			(device_id, bucket_start, sum_interval_seconds, sum_bytes_sent_total, sum_bytes_recv_total, sum_bytes_sent_control, sum_bytes_recv_control, sample_count)
+		SELECT device_id, date_trunc('hour', observed_at) AS bucket_start,
+		       sum(interval_seconds), sum(bytes_sent_total), sum(bytes_recv_total), sum(bytes_sent_control), sum(bytes_recv_control), count(*)
+		FROM device_network_metrics
+		WHERE observed_at < date_trunc('hour', now())
+		GROUP BY device_id, date_trunc('hour', observed_at)
+		ON CONFLICT (device_id, bucket_start) DO UPDATE SET
+			sum_interval_seconds = EXCLUDED.sum_interval_seconds,
+			sum_bytes_sent_total = EXCLUDED.sum_bytes_sent_total,
+			sum_bytes_recv_total = EXCLUDED.sum_bytes_recv_total,
+			sum_bytes_sent_control = EXCLUDED.sum_bytes_sent_control,
+			sum_bytes_recv_control = EXCLUDED.sum_bytes_recv_control,
+			sample_count = EXCLUDED.sample_count
+	`)
+	if err != nil {
+		return fmt.Errorf("device: rollup hourly network metrics: %w", err)
+	}
+	return nil
+}
+
+// ApplyNetworkMetricsRetention mirrors ApplyMetricsRetention for the
+// separate network metrics tables.
+func (r *Repo) ApplyNetworkMetricsRetention(ctx context.Context, rawRetention, hourlyRetention time.Duration) error {
+	if _, err := r.pool.Exec(ctx, `DELETE FROM device_network_metrics WHERE observed_at < now() - make_interval(secs => $1)`, rawRetention.Seconds()); err != nil {
+		return fmt.Errorf("device: raw network metrics retention: %w", err)
+	}
+	if _, err := r.pool.Exec(ctx, `DELETE FROM device_network_metrics_hourly WHERE bucket_start < now() - make_interval(secs => $1)`, hourlyRetention.Seconds()); err != nil {
+		return fmt.Errorf("device: hourly network metrics retention: %w", err)
+	}
+	return nil
+}
+
+// DeviceNetworkTotal is one row of the cross-device traffic ranking —
+// "which client is using how much bandwidth" (docs/API.md §6).
+type DeviceNetworkTotal struct {
+	DeviceID         uuid.UUID
+	DisplayName      string
+	BytesSentTotal   int64
+	BytesRecvTotal   int64
+	BytesSentControl int64
+	BytesRecvControl int64
+}
+
+// NetworkUsageSummary sums raw network samples since `since`, per device,
+// for the cross-device ranking view — deliberately queries the raw table
+// only (not hourly), so `since` should stay within the raw retention
+// window (see appsettings.KeyNetworkRawRetentionHours) or totals will be
+// incomplete for older devices' history.
+func (r *Repo) NetworkUsageSummary(ctx context.Context, since time.Time) ([]DeviceNetworkTotal, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT d.id, d.display_name,
+		       COALESCE(sum(m.bytes_sent_total),0), COALESCE(sum(m.bytes_recv_total),0),
+		       COALESCE(sum(m.bytes_sent_control),0), COALESCE(sum(m.bytes_recv_control),0)
+		FROM devices d
+		JOIN device_network_metrics m ON m.device_id = d.id AND m.observed_at >= $1
+		GROUP BY d.id, d.display_name
+		ORDER BY sum(m.bytes_sent_total) + sum(m.bytes_recv_total) DESC
+	`, since)
+	if err != nil {
+		return nil, fmt.Errorf("device: network usage summary: %w", err)
+	}
+	defer rows.Close()
+
+	var out []DeviceNetworkTotal
+	for rows.Next() {
+		var t DeviceNetworkTotal
+		if err := rows.Scan(&t.DeviceID, &t.DisplayName, &t.BytesSentTotal, &t.BytesRecvTotal, &t.BytesSentControl, &t.BytesRecvControl); err != nil {
+			return nil, fmt.Errorf("device: scan network usage summary: %w", err)
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
 
 // ActiveCredentialPublicKey returns the current (highest key_version,

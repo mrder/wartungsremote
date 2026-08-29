@@ -114,6 +114,39 @@ Windows:
 
 Nicht vorhandene Dienste (z. B. RDP deaktiviert) können Capability vorhanden, Runtime-Status aber unavailable sein; UI muss Unterschied darstellen.
 
+## 8a. Netzwerk-Traffic-Metriken
+
+Anders als CPU/RAM/Disk (`metrics_report`, live pro `status_interval`
+gepusht) wird Netzwerk-Traffic lokal gepuffert und im Batch hochgeladen,
+siehe `internal/netmetrics` und docs/PROTOCOL.md §7a. Grund: sinnvolle
+Traffic-Charts brauchen eine deutlich feinere Abtastrate, als man alle
+paar Minuten über den Control-Channel schicken möchte — und ein kurzer
+Verbindungsverlust soll keine Daten kosten, nur die Zustellung verzögern.
+
+Ablauf:
+
+1. Ein Sampler-Goroutine läuft für die gesamte Prozesslaufzeit (unabhängig
+   von der aktuellen Verbindung), alle 60s (`netmetrics.SampleInterval`,
+   fest — beeinflusst nur lokale Auflösung/Plattenverbrauch, nicht die
+   Serverlast).
+2. Pro Tick: `platform.Provider.NetworkCounters()` liefert kumulative
+   Byte-Zähler seit Systemstart (gopsutil, alle Interfaces summiert);
+   die Differenz zum letzten Tick ergibt den Traffic dieses Intervalls.
+   Gleichzeitig wird der eigene Control-Channel-Traffic seit dem letzten
+   Tick ausgelesen (Nachrichtennutzlast-Bytes, kein Rohbyte-Zählung auf
+   TCP/TLS-Ebene) und zurückgesetzt.
+3. Das Sample landet in einer lokalen SQLite-Datei
+   (`<DataDir>/netmetrics.db`, `modernc.org/sqlite` — bewusst reines Go
+   ohne cgo, damit der dokumentierte Ein-Zeilen-Cross-Compile für Windows
+   und Linux unverändert funktioniert).
+4. Alle `network_upload_interval_seconds` (vom Server via `hello_ack`
+   vorgegeben, Standard 5min) sowie einmal sofort nach jedem
+   Verbindungsaufbau werden alle noch nicht hochgeladenen Samples als
+   `network_metrics_batch` gesendet und erst danach lokal gelöscht.
+
+Ein Fehler beim Öffnen der lokalen Datenbank ist nicht fatal — der Agent
+läuft normal weiter, nur ohne Netzwerk-Traffic-Historie für diesen Lauf.
+
 ## 9. OS Adapter Interface
 
 Gemeinsame Interfaces für:
@@ -121,6 +154,7 @@ Gemeinsame Interfaces für:
 ```text
 InventoryProvider
 MetricsProvider
+NetworkCounterProvider
 TerminalProvider
 ServiceProvider
 ProcessProvider

@@ -154,6 +154,49 @@ Resolution serverseitig begrenzen.
 
 Aktuelle Bewertung + Gründe.
 
+## 6a. Netzwerk-Metriken
+
+Traffic-Historie, getrennt von §6 erfasst (agentseitig lokal gepuffert und
+im Batch hochgeladen, siehe docs/AGENT.md "Netzwerk-Traffic-Metriken"),
+daher eigener Endpunkt statt eines Felds in `/metrics`.
+
+### GET `/devices/:id/network-metrics?from=...&to=...&resolution=...`
+
+Wie `/metrics`, aber für Netzwerk-Traffic. Jeder Punkt liefert sowohl die
+rohen Byte-Zähler des Intervalls als auch bereits serverseitig berechnete
+Rate-Felder (`*_per_sec`):
+
+```json
+{
+  "data": [
+    {
+      "observed_at": "...",
+      "bytes_sent_total": 61440,
+      "bytes_recv_total": 512000,
+      "bytes_sent_control": 890,
+      "bytes_recv_control": 2100,
+      "bytes_sent_total_per_sec": 1024.0,
+      "bytes_recv_total_per_sec": 8533.3,
+      "bytes_sent_control_per_sec": 14.8,
+      "bytes_recv_control_per_sec": 35.0
+    }
+  ]
+}
+```
+
+`*_total` ist der gesamte Netzwerk-Traffic des Geräts (alle Interfaces);
+`*_control` ist nur der eigene Control-Channel-Traffic dieses Agents zu
+diesem Server — getrennt erfasst, um allgemeine Bandbreitennutzung von dem
+Overhead des Tools selbst unterscheiden zu können.
+
+### GET `/network-usage?hours=24`
+
+Permission: `monitoring.read`. Rangliste über alle Geräte — "welcher
+Client verursacht wie viel Traffic" — summiert über die letzten `hours`
+Stunden (Standard 24) aus den Rohdaten; ein zu großes Fenster kann daher
+ältere Historie verpassen, sobald sie außerhalb der konfigurierten
+Rohdaten-Aufbewahrung liegt (Settings → Netzwerk-Traffic-Historie).
+
 ## 7. Remote Sessions
 
 ### POST `/devices/:id/sessions`

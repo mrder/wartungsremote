@@ -171,10 +171,37 @@ export const DeviceApi = {
     api.get<Array<{ observed_at: string; cpu_percent: number; memory_used_bytes: number; memory_total_bytes: number; disk_used_bytes: number; disk_total_bytes: number }>>(
       `/devices/${id}/metrics?resolution=${resolution}`
     ),
+  networkMetrics: (id: string, resolution: 'raw' | 'hourly' = 'raw') =>
+    api.get<NetworkMetricsPoint[]>(`/devices/${id}/network-metrics?resolution=${resolution}`),
   patch: (id: string, body: { display_name?: string; customer_id?: string | null; group_id?: string | null; tags?: string[] }) =>
     api.patch(`/devices/${id}`, body),
   maintenance: (id: string) => api.get<MaintenanceSession[]>(`/devices/${id}/maintenance`),
   ipHistory: (id: string, hours = 24) => api.get<IPHistoryEntry[]>(`/devices/${id}/ip-history?hours=${hours}`),
+}
+
+export interface NetworkMetricsPoint {
+  observed_at: string
+  bytes_sent_total: number
+  bytes_recv_total: number
+  bytes_sent_control: number
+  bytes_recv_control: number
+  bytes_sent_total_per_sec: number
+  bytes_recv_total_per_sec: number
+  bytes_sent_control_per_sec: number
+  bytes_recv_control_per_sec: number
+}
+
+export interface DeviceNetworkTotal {
+  device_id: string
+  display_name: string
+  bytes_sent_total: number
+  bytes_recv_total: number
+  bytes_sent_control: number
+  bytes_recv_control: number
+}
+
+export const NetworkUsageApi = {
+  summary: (hours = 24) => api.get<DeviceNetworkTotal[]>(`/network-usage?hours=${hours}`),
 }
 
 export interface MaintenanceSession {
@@ -359,6 +386,9 @@ export const SettingsApi = {
   getRetention: () => api.get<{ raw_retention_hours: number; hourly_retention_hours: number }>('/settings/retention'),
   setRetention: (rawRetentionHours: number, hourlyRetentionHours: number) =>
     api.patch('/settings/retention', { raw_retention_hours: rawRetentionHours, hourly_retention_hours: hourlyRetentionHours }),
+  getNetworkRetention: () => api.get<{ raw_retention_hours: number; hourly_retention_hours: number }>('/settings/network-retention'),
+  setNetworkRetention: (rawRetentionHours: number, hourlyRetentionHours: number) =>
+    api.patch('/settings/network-retention', { raw_retention_hours: rawRetentionHours, hourly_retention_hours: hourlyRetentionHours }),
   getSupportCredentialRotation: () => api.get<{ rotation_days: number }>('/settings/support-credential-rotation'),
   setSupportCredentialRotation: (rotationDays: number) =>
     api.patch('/settings/support-credential-rotation', { rotation_days: rotationDays }),
