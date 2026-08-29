@@ -242,6 +242,7 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	protected.HandleFunc("GET /api/v1/devices/{id}/audit", h.handleDeviceAuditLog)
 	protected.HandleFunc("GET /api/v1/audit", h.handleAuditLog)
 	protected.HandleFunc("GET /api/v1/audit/export", h.handleExportAuditLog)
+	protected.HandleFunc("POST /api/v1/audit/verify", h.handleVerifyAuditChain)
 
 	protected.HandleFunc("POST /api/v1/devices/{id}/sessions", h.handleCreateSession)
 	protected.HandleFunc("GET /api/v1/sessions/{id}", h.handleGetSession)

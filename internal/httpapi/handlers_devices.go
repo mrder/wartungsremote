@@ -425,6 +425,34 @@ func uuidOrEmpty(id *uuid.UUID) string {
 	return id.String()
 }
 
+// handleVerifyAuditChain recomputes the audit log's whole hash chain
+// (docs/SECURITY.md §16) and reports whether it's intact. Read-only,
+// but O(n) over the entire table, so it's an explicit admin action
+// rather than something run automatically on every page load.
+func (h *handlers) handleVerifyAuditChain(w http.ResponseWriter, r *http.Request) {
+	grants := authpkg.GrantsFromContext(r.Context())
+	if !authpkg.HasAnyGrant(grants, authpkg.PermAuditRead) {
+		writeErr(w, http.StatusForbidden, "permission_denied", "Not permitted")
+		return
+	}
+	result, err := h.audit.VerifyChain(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to verify audit chain")
+		return
+	}
+	user, _ := authpkg.UserFromContext(r.Context())
+	auditResult := audit.ResultSuccess
+	if !result.Valid {
+		auditResult = audit.ResultFailure
+	}
+	_ = h.audit.Record(r.Context(), audit.Event{
+		ActorType: audit.ActorUser, ActorID: &user.ID,
+		EventType: "audit.chain_verified", Result: auditResult, SourceIP: h.clientIP(r),
+		Metadata: map[string]any{"valid": result.Valid, "entries_checked": result.EntriesCheck, "broken_at_id": result.BrokenAtID},
+	})
+	writeJSON(w, http.StatusOK, result, nil)
+}
+
 func (h *handlers) handleDeviceAuditLog(w http.ResponseWriter, r *http.Request) {
 	d, ok := h.loadDeviceWithAccess(w, r, authpkg.PermAuditRead)
 	if !ok {

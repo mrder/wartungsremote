@@ -192,11 +192,24 @@ Alle Daten vom Agenten und Browser sind untrusted.
 ## 16. Audit Integrity
 
 Audit-Benutzeroberfläche darf keine normale Delete-Funktion haben.
+Zusätzlich per DB-Trigger als append-only erzwungen (kein UPDATE/DELETE
+für die normale Anwendungsrolle, migrations/0003_db_roles.sql).
 
-Optional:
+Implementiert: Hashchain pro Audit-Entry. Jeder Eintrag speichert
+`entry_hash = SHA256(prev_hash || Felder dieses Eintrags)` — berechnet
+in Go beim Schreiben (`internal/audit.Logger.Record`), nicht per
+DB-Trigger, damit Schreib- und Prüfpfad nie unterschiedliche
+Serialisierungen verwenden können. `POST /audit/verify` (docs/API.md
+§15) rechnet die Kette komplett neu und erkennt so auch eine Änderung,
+die den Append-only-Trigger umgeht (direkter DB-Zugriff mit
+ausreichenden Rechten) — das ist die verbleibende Bedrohung, gegen die
+der Trigger allein nicht schützt. Einträge von vor Einführung dieses
+Features haben keinen Hash und werden als "pre-chain" ausgewiesen, nicht
+als Manipulation.
 
-- Hashchain pro Audit-Entry.
-- täglicher Signatur-/Checkpoint-Hash.
+Noch offen (optional):
+
+- täglicher Signatur-/Checkpoint-Hash (z.B. extern notarisiert).
 - zusätzliches externes Write-Only Log-Ziel.
 
 ## 17. Update Supply Chain

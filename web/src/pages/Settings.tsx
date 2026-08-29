@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { SettingsApi, ApiError } from '../api'
+import { SettingsApi, AuditApi, ApiError, type ChainVerification } from '../api'
+import { useAuth } from '../AuthContext'
 
 export default function Settings() {
+  const { user } = useAuth()
   const [rawHours, setRawHours] = useState('')
   const [hourlyHours, setHourlyHours] = useState('')
   const [rotationDays, setRotationDays] = useState('')
@@ -17,6 +19,9 @@ export default function Settings() {
   const [telegramSaved, setTelegramSaved] = useState(false)
   const [telegramTestMsg, setTelegramTestMsg] = useState('')
   const [telegramBusy, setTelegramBusy] = useState(false)
+
+  const [chainResult, setChainResult] = useState<ChainVerification | null>(null)
+  const [chainBusy, setChainBusy] = useState(false)
 
   async function load() {
     try {
@@ -82,6 +87,19 @@ export default function Settings() {
       load()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to save settings')
+    }
+  }
+
+  async function verifyChain() {
+    setError('')
+    setChainResult(null)
+    setChainBusy(true)
+    try {
+      setChainResult(await AuditApi.verifyChain())
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to verify audit chain')
+    } finally {
+      setChainBusy(false)
     }
   }
 
@@ -215,6 +233,39 @@ export default function Settings() {
           </button>
         )}
       </form>
+
+      {user?.permissions.includes('audit.read') && (
+        <>
+          <h3>Audit log integrity</h3>
+          <p>
+            Every audit entry is cryptographically chained to the one before it, so an entry can't be
+            edited or deleted afterwards without breaking the chain from that point on — this
+            recomputes the whole chain from scratch and checks it against what's stored. Read-only, but
+            scans the entire audit log, so it's a manual action rather than something run on every page
+            load.
+          </p>
+          <div className="toolbar">
+            <button type="button" onClick={verifyChain} disabled={chainBusy}>
+              {chainBusy ? 'Verifying...' : 'Verify chain'}
+            </button>
+          </div>
+          {chainResult && (
+            chainResult.Valid ? (
+              <p>
+                Chain intact — {chainResult.EntriesCheck} entries checked, no tampering detected.
+                {chainResult.EntriesPreChain > 0 &&
+                  ` (${chainResult.EntriesPreChain} older entries predate this feature and aren't covered by the chain.)`}
+              </p>
+            ) : (
+              <p className="error">
+                Chain broken at entry #{chainResult.BrokenAtID} ({chainResult.EntriesCheck} entries
+                checked before the break was found) — this entry or one before it no longer matches what
+                was originally recorded.
+              </p>
+            )
+          )}
+        </>
+      )}
     </div>
   )
 }

@@ -294,6 +294,23 @@ Privilege + explizite UI-Bestätigung + Audit.
 
 Filter nach User, Device, Eventtyp, Zeitraum. Keine Lösch-API für normale Adminrollen.
 
+### POST `/audit/verify`
+
+Permission: `audit.read`. Rechnet die gesamte Hash-Chain
+(`prev_hash`/`entry_hash`, docs/SECURITY.md §16) neu und vergleicht sie
+mit den gespeicherten Werten — erkennt jede Änderung an bestehenden
+Einträgen, auch direkt in der Datenbank (unabhängig vom Append-only-
+Trigger). Read-only, aber O(n) über die gesamte Tabelle, daher eine
+gezielte Admin-Aktion statt automatisch bei jedem Seitenaufruf.
+
+```json
+{"data": {"Valid": true, "EntriesCheck": 4, "EntriesPreChain": 29, "BrokenAtID": null}}
+```
+
+`EntriesPreChain` zählt führende Einträge von vor Einführung dieses
+Features (kein `entry_hash` vorhanden) — kein Hinweis auf Manipulation,
+nur ein Bestand aus der Zeit davor.
+
 ## 16. Kunden/Gruppen
 
 CRUD:

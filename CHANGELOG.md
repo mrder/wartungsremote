@@ -5,6 +5,58 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed: concurrent startups could race on database migrations
+
+- `internal/db.Migrate` checked "is this migration applied yet?" and
+  applied it as two separate, unsynchronized steps — fine for the
+  overwhelmingly common case of one process migrating an empty or
+  up-to-date database, but if two processes ever start against the same
+  database at once (an overlapping rolling restart; also just two test
+  binaries sharing one database, which is how this was actually found),
+  both see "not applied" and both run it, and anything with a
+  globally-unique name (`CREATE EXTENSION`, `CREATE TYPE`) fails outright
+  instead of harmlessly re-running. Fixed with a `pg_advisory_lock` held
+  for the whole migration pass, so a second caller just waits its turn
+  and then finds everything already applied.
+- Live-verified by deliberately reproducing the race (two test packages
+  pointed at the same fresh database) before the fix — reliably failed —
+  and confirming three clean runs in a row after it.
+
+### Added: audit log hash chain, and a way to verify it
+
+- `audit_log.prev_hash`/`entry_hash` columns have existed in the schema
+  since the very first migration but were never actually populated —
+  found while looking for something worth adding here. Every audit entry
+  is now chained to the one before it (`entry_hash = SHA256(prev_hash ||
+  this entry's fields)`), computed in Go rather than a DB trigger so the
+  write path and the verify path can never quietly drift apart on
+  serialization format. Concurrent inserts are serialized with
+  `pg_advisory_xact_lock` so the chain can't fork under load.
+- Added `POST /api/v1/audit/verify` (permission `audit.read`) and a
+  "Verify chain" button under Settings → Audit log integrity: recomputes
+  every entry's hash from scratch and reports whether anything since the
+  chain started has been altered. Combined with the existing append-only
+  DB trigger, an edit made directly against the database — bypassing the
+  application entirely — is now detectable, not just blocked.
+- Rows inserted before this shipped have no hash to check; a leading run
+  of those is correctly reported as "pre-chain" rather than as tampering
+  — this only matters on an install with existing audit history (i.e.
+  every real one), and was caught by testing against the actual
+  months-old local dev database rather than a fresh one.
+- Found and fixed two real bugs live-testing this against that database:
+  (1) the hash was computed from a nanosecond-precision timestamp before
+  it was known that Postgres' `timestamptz` only keeps microseconds,
+  silently truncating the value it later reads back and breaking every
+  single entry's verification; (2) the driver reads timestamps back in
+  the local timezone rather than UTC, so the same instant formatted with
+  a different offset and, again, broke every verification. Both are
+  now normalized before hashing on both the write and read side.
+- Live-verified end to end against the real dev server and its 29
+  pre-existing audit entries: logged in through the actual dashboard,
+  clicked "Verify chain", got back "Chain intact — 4 entries checked, no
+  tampering detected. (29 older entries predate this feature...)" —
+  correct on both counts.
+
 ### Added: reusable enrollment tokens, and a way to actually see/revoke them
 
 - Bulk rollouts (many devices, one token) were previously not possible —

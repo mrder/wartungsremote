@@ -612,7 +612,7 @@ Optional:
 ## Phase 36 – Audit Integrity & Export
 
 - [x] Append-only Anwendungsmodell
-- [ ] Audit Hashchain optional
+- [x] Audit Hashchain (`internal/audit.Logger.Record`/`VerifyChain`, `POST /audit/verify`, live-verifiziert gegen echte DB mit Bestandsdaten)
 - [x] Audit Export JSON/CSV (`GET /audit/export?format=json|csv`, live-verifiziert inkl. Filter)
 - [x] Filter nach User/Device/Event/Zeitraum
 - [x] keine normale Delete API

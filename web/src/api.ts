@@ -134,12 +134,20 @@ export const HelpApi = {
   page: (slug: string) => api.get<HelpPage>(`/help/${slug}`),
 }
 
+export interface ChainVerification {
+  Valid: boolean
+  EntriesCheck: number
+  EntriesPreChain: number
+  BrokenAtID: number | null
+}
+
 export const AuditApi = {
   exportUrl: (format: 'json' | 'csv', deviceId?: string) => {
     const qs = new URLSearchParams({ format })
     if (deviceId) qs.set('device_id', deviceId)
     return `${BASE}/audit/export?${qs.toString()}`
   },
+  verifyChain: () => api.post<ChainVerification>('/audit/verify', {}),
 }
 
 export const AuthApi = {

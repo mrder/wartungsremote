@@ -38,7 +38,13 @@ jobs:
       - name: Integration tests (database-backed)
         env:
           WR_TEST_DATABASE_URL: postgres://wartungsremote:wartungsremote_test@localhost:5432/wartungsremote_test?sslmode=disable
-        run: go test ./tests/... -v
+        # Deliberately -p 1: these packages share one database (the
+        # WR_TEST_DATABASE_URL above), and each runs its own migration
+        # on first connect — running them concurrently against the same
+        # database is exactly the scenario internal/db.migrationLockKey
+        # exists to make safe, but serializing here keeps CI output
+        # readable instead of interleaved across packages.
+        run: go test ./tests/... ./internal/audit/... -v -p 1
 
   web:
     runs-on: ubuntu-latest
