@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/kardianos/service"
 
@@ -20,7 +21,7 @@ import (
 	"wartungsremote/internal/config"
 )
 
-const agentVersion = "0.2.0"
+const agentVersion = "0.2.1"
 
 type program struct {
 	cancel context.CancelFunc
@@ -120,6 +121,9 @@ func runAgent(ctx context.Context) error {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: parseLevel(cfg.LogLevel)}))
 	slog.SetDefault(logger)
 	slog.Info("wr-agent starting", "version", agentVersion, "server_url", cfg.ServerURL, "config", configPath)
+	if !strings.HasPrefix(cfg.ServerURL, "https://") {
+		slog.Warn("server_url is not HTTPS — the control channel to the server is unencrypted on the wire; set up a TLS-terminating reverse proxy on the server and update server_url", "server_url", cfg.ServerURL)
+	}
 
 	store := agentcore.NewCredentialStore(cfg.DataDir)
 	if !store.Exists() {

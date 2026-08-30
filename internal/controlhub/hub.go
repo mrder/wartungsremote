@@ -570,6 +570,7 @@ func (h *Hub) handshake(ctx context.Context, conn *websocket.Conn) (deviceID, in
 		_ = h.devices.SetCapabilities(context.Background(), devID, hello.Capabilities)
 	}
 	_ = h.devices.ApplyInventory(context.Background(), devID, d.Hostname, osFamilyOf(hello.OS), d.OSName, d.OSVersion, hello.Arch, hello.AgentVersion)
+	_ = h.devices.UpdateTransportSecurity(context.Background(), devID, hello.Secure)
 
 	return devID, instID, true
 }

@@ -58,6 +58,21 @@ Berücksichtigen:
 - HSTS für Admin Web.
 - sichere moderne Cipher-Auswahl der verwendeten TLS-Bibliothek; keine selbst entwickelte Kryptographie.
 
+wr-core terminiert TLS bewusst nicht selbst (docs/DEPLOYMENT.md §4) —
+das übernimmt ein vorgeschalteter Reverse Proxy. Da der Server das also
+nicht direkt beobachten kann, gibt es zwei ergänzende, nicht
+blockierende Hinweise statt einer harten Prüfung:
+
+- **Serverseitig**: `internal/config.Advisory` (`insecure_base_url`,
+  wenn `public.base_url` nicht `https://` ist) — beim Start geloggt und
+  im Dashboard als Banner für `system.settings`-Berechtigte angezeigt.
+- **Clientseitig**: jeder Agent meldet beim Handshake ehrlich, ob er per
+  `wss://` verbunden hat (`protocol.HelloPayload.Secure`,
+  docs/PROTOCOL.md §4) — landet als `devices.transport_secure` und wird
+  pro Gerät im Dashboard angezeigt, falls `false`. So kann auch ein
+  einzelner, falsch konfigurierter Agent auffallen, selbst wenn der
+  Server selbst korrekt hinter HTTPS läuft.
+
 ## 6. Device Credentials
 
 Empfohlene Implementierung:

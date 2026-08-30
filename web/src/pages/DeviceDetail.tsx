@@ -195,6 +195,16 @@ export default function DeviceDetail() {
                 </span>
               </td>
             </tr>
+            {device.transport_secure === false && (
+              <tr>
+                <td>Connection</td>
+                <td>
+                  <span className="badge badge-yellow" title="This agent reported connecting without TLS (server_url is not https://) — traffic to/from this device is unencrypted on the wire.">
+                    Unencrypted
+                  </span>
+                </td>
+              </tr>
+            )}
             {canTunnel && (
               <tr>
                 <td>Remote-support account</td>

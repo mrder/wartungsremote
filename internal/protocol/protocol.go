@@ -105,6 +105,12 @@ type HelloPayload struct {
 	BootID       string   `json:"boot_id"`
 	Nonce        string   `json:"nonce"`     // echoes ControlChallengePayload.Nonce
 	Signature    string   `json:"signature"` // base64 Ed25519 signature over the raw nonce bytes
+	// Secure is true if the agent dialed the control channel via wss://
+	// (i.e. its configured server_url is https://) — reported honestly by
+	// the agent itself since wr-core, sitting behind whatever reverse
+	// proxy terminates TLS, has no other way to know per-device whether
+	// that specific agent is actually using an encrypted connection.
+	Secure bool `json:"secure"`
 }
 
 // HelloAckPayload is the server's response to Hello.

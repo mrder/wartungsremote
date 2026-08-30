@@ -52,6 +52,12 @@ export const api = {
 
 // --- Types matching docs/API.md -------------------------------------------
 
+export interface Advisory {
+  code: string
+  severity: 'info' | 'warning' | 'critical'
+  message: string
+}
+
 export interface Me {
   id: string
   username: string
@@ -60,6 +66,7 @@ export interface Me {
   mfa_confirmed: boolean
   session_expires_at: string
   public_base_url: string
+  advisories?: Advisory[]
 }
 
 export type LoginState = 'mfa_required' | 'mfa_setup_required' | 'authenticated'
@@ -88,6 +95,7 @@ export interface Device {
   tags: string[]
   last_seen_at: string | null
   last_public_ip: string
+  transport_secure: boolean | null
   online?: boolean
   support_credential_available?: boolean
   support_credential_updated_at?: string

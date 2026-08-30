@@ -40,23 +40,27 @@ const (
 )
 
 type Device struct {
-	ID               uuid.UUID
-	InstallID        uuid.UUID
-	CustomerID       *uuid.UUID
-	GroupID          *uuid.UUID
-	DisplayName      string
-	Hostname         string
-	OSFamily         string
-	OSName           string
-	OSVersion        string
-	Architecture     string
-	AgentVersion     string
-	Status           Status
-	Health           Health
-	HealthReasons    []string
-	Tags             []string
-	LastSeenAt       *time.Time
-	LastPublicIP     string
+	ID            uuid.UUID
+	InstallID     uuid.UUID
+	CustomerID    *uuid.UUID
+	GroupID       *uuid.UUID
+	DisplayName   string
+	Hostname      string
+	OSFamily      string
+	OSName        string
+	OSVersion     string
+	Architecture  string
+	AgentVersion  string
+	Status        Status
+	Health        Health
+	HealthReasons []string
+	Tags          []string
+	LastSeenAt    *time.Time
+	LastPublicIP  string
+	// TransportSecure reflects whether the agent's most recent handshake
+	// reported using wss:// — nil means unknown (never connected since
+	// this was added, or a pre-0.2.1 agent that doesn't report it).
+	TransportSecure  *bool
 	CredentialStatus string
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
@@ -78,7 +82,7 @@ func scanDevice(row pgx.Row) (Device, error) {
 		&d.ID, &d.InstallID, &d.CustomerID, &d.GroupID, &d.DisplayName, &d.Hostname,
 		&d.OSFamily, &d.OSName, &d.OSVersion, &d.Architecture, &d.AgentVersion,
 		&d.Status, &d.Health, &healthReasons, &tags, &d.LastSeenAt, &lastPublicIP,
-		&d.CredentialStatus, &d.CreatedAt, &d.UpdatedAt,
+		&d.TransportSecure, &d.CredentialStatus, &d.CreatedAt, &d.UpdatedAt,
 	)
 	if err != nil {
 		return Device{}, err
@@ -95,7 +99,7 @@ const selectColumns = `
 	id, install_id, customer_id, group_id, display_name, COALESCE(hostname,''),
 	COALESCE(os_family,''), COALESCE(os_name,''), COALESCE(os_version,''), COALESCE(architecture,''), COALESCE(agent_version,''),
 	status, health, health_reasons, tags, last_seen_at, host(last_public_ip),
-	credential_status, created_at, updated_at
+	transport_secure, credential_status, created_at, updated_at
 `
 
 func (r *Repo) GetByID(ctx context.Context, id uuid.UUID) (Device, error) {
@@ -607,6 +611,15 @@ func (r *Repo) Revoke(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("device: revoke credentials: %w", err)
 	}
 	return tx.Commit(ctx)
+}
+
+// UpdateTransportSecurity records whether the agent's most recent
+// handshake reported using wss:// — see protocol.HelloPayload.Secure.
+func (r *Repo) UpdateTransportSecurity(ctx context.Context, id uuid.UUID, secure bool) error {
+	if _, err := r.pool.Exec(ctx, `UPDATE devices SET transport_secure = $1 WHERE id = $2`, secure, id); err != nil {
+		return fmt.Errorf("device: update transport security: %w", err)
+	}
+	return nil
 }
 
 func (r *Repo) SetCapabilities(ctx context.Context, id uuid.UUID, capabilities []string) error {

@@ -5,6 +5,32 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added: HTTPS/security configuration advisories (agent v0.2.1)
+
+- wr-core deliberately never terminates TLS itself (a reverse proxy is
+  expected to) — but a `public.base_url` that isn't `https://` is a
+  reliable signal nobody has set that up yet. Now surfaced two ways
+  rather than silently ignored: logged as a startup warning, and shown
+  as a dashboard banner to anyone with `system.settings` (via a new
+  `advisories` field on `GET /me`). Also flags plain `mode: development`
+  as an informational reminder.
+- Complements this with an honest per-device signal: every agent now
+  reports at handshake whether it actually dialed `wss://` (i.e. its own
+  `server_url` is `https://`), stored as `devices.transport_secure` and
+  shown as an "Unencrypted" badge on that device's Overview tab. Catches
+  the case where a correctly-configured HTTPS server still has one
+  leftover agent pointed at an old `http://` URL, which a server-side-only
+  check could never see.
+- Agent itself also logs a local startup warning if its own `server_url`
+  isn't HTTPS, independent of anything server-side.
+- Live-verified: built and signed a real v0.2.1 release, and for the
+  first time actually exercised the self-update mechanism end-to-end for
+  real (not just its signature-verification code in isolation) —
+  download, verify, atomic swap, restart, "update committed" on
+  reconnect — since every previously-built dev agent predated having the
+  release-signing key embedded and could never attempt it. Confirmed the
+  new banners and per-device badge with real data afterward.
+
 ### Added: network traffic history (agent v0.2.0)
 
 - New per-device network traffic charts (sent/received, both total

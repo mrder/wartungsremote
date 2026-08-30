@@ -6,6 +6,7 @@ import (
 
 	"wartungsremote/internal/audit"
 	authpkg "wartungsremote/internal/auth"
+	"wartungsremote/internal/config"
 )
 
 type loginRequest struct {
@@ -240,6 +241,14 @@ func (h *handlers) handleMe(w http.ResponseWriter, r *http.Request) {
 	}
 	confirmed, _ := h.auth.MFA.IsConfirmed(r.Context(), user.ID)
 
+	// Only surfaced to users who can actually act on it (same gate as the
+	// Settings page) — a viewer-only account doesn't need to be told the
+	// deployment is missing HTTPS.
+	var advisories []config.Advisory
+	if authpkg.HasAnyGrant(grants, authpkg.PermSystemSettings) {
+		advisories = h.cfg.SecurityAdvisories()
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id":                 user.ID,
 		"username":           user.Username,
@@ -250,5 +259,6 @@ func (h *handlers) handleMe(w http.ResponseWriter, r *http.Request) {
 		// Needed by the web UI to show the exact `wr-helper --server ...`
 		// command for SSH/RDP tunnels (docs/RELAY.md §5) — not a secret.
 		"public_base_url": h.cfg.Public.BaseURL,
+		"advisories":      advisories,
 	}, nil)
 }

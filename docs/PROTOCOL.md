@@ -61,10 +61,17 @@ Nach TLS/WebSocket-Upgrade sendet Agent:
     "os": "linux",
     "arch": "amd64",
     "capabilities": ["metrics", "terminal", "ssh_tunnel"],
-    "boot_id": "..."
+    "boot_id": "...",
+    "secure": true
   }
 }
 ```
+
+`secure` ist `true`, wenn der Agent per `wss://` verbunden hat (d.h.
+sein konfigurierter `server_url` ist `https://`) — vom Agenten ehrlich
+selbst gemeldet, da wr-core hinter dem TLS-terminierenden Reverse Proxy
+sonst keine Möglichkeit hat, das pro Gerät zu wissen. Landet in
+`devices.transport_secure` (docs/API.md §5).
 
 Server:
 

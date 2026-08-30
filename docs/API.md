@@ -64,6 +64,12 @@ Für sensible Aktionen/Privilege Session. Liefert kurzlebige `reauth_id`, nicht 
 
 Liefert User, Rollen, Permissions, Sessionablauf und MFA-Status.
 
+Für Aufrufer mit `system.settings` zusätzlich `advisories`: nicht
+blockierende Konfigurationshinweise (z.B. `insecure_base_url`,
+`development_mode` — siehe `internal/config.Advisory`), im Dashboard als
+Banner angezeigt. Leer/fehlt, wenn keine Hinweise vorliegen oder der
+Aufrufer die Permission nicht hat.
+
 ## 4. Enrollment
 
 ### POST `/enrollments`
@@ -119,6 +125,11 @@ Filter:
 - `page_size`
 
 ### GET `/devices/:id`
+
+Enthält u.a. `transport_secure` (bool | null): ob der Agent beim letzten
+Handshake `wss://` gemeldet hat — `null` bedeutet unbekannt (noch nie
+verbunden seit diesem Feld, oder Agent < 0.2.1). `false` zeigt im
+Dashboard einen "Unencrypted"-Hinweis am Gerät.
 
 ### PATCH `/devices/:id`
 

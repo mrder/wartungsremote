@@ -11,6 +11,7 @@ import Settings from './pages/Settings'
 import NetworkUsage from './pages/NetworkUsage'
 import Account from './pages/Account'
 import Help from './pages/Help'
+import AdvisoryBanner from './components/AdvisoryBanner'
 
 function RequireAuth({ children }: { children: React.ReactElement }) {
   const { user, loading } = useAuth()
@@ -49,6 +50,7 @@ function Footer() {
 export default function App() {
   return (
     <AuthProvider>
+      <AdvisoryBanner />
       <AppRoutes />
       <Footer />
     </AuthProvider>

@@ -157,6 +157,9 @@ func run(ctx context.Context) error {
 		return err
 	}
 	slog.Info("configuration loaded", "mode", cfg.Mode, "config_file", configPath)
+	for _, a := range cfg.SecurityAdvisories() {
+		slog.Warn("security advisory", "code", a.Code, "severity", a.Severity, "message", a.Message)
+	}
 
 	dsn := cfg.Secrets.DatabaseURL
 	if dsn == "" {

@@ -93,7 +93,8 @@ func runSession(ctx context.Context, serverURL, agentVersion string, identity Id
 	defer conn.CloseNow()
 	conn.SetReadLimit(int64(protocol.MaxInventoryBytes))
 
-	heartbeatInterval, statusInterval, networkUploadInterval, err := handshake(ctx, conn, agentVersion, identity, provider)
+	secure := strings.HasPrefix(wsURL, "wss://")
+	heartbeatInterval, statusInterval, networkUploadInterval, err := handshake(ctx, conn, agentVersion, identity, provider, secure)
 	if err != nil {
 		return err
 	}
@@ -242,7 +243,7 @@ func (a *agentSession) sendMetrics(ctx context.Context) {
 // handshake completes the control_challenge/hello/hello_ack exchange
 // described in docs/PROTOCOL.md §4 and the Ed25519 proof-of-possession
 // scheme implemented server-side in internal/controlhub.
-func handshake(ctx context.Context, conn *websocket.Conn, agentVersion string, identity Identity, provider platform.Provider) (heartbeatInterval, statusInterval, networkUploadInterval time.Duration, err error) {
+func handshake(ctx context.Context, conn *websocket.Conn, agentVersion string, identity Identity, provider platform.Provider, secure bool) (heartbeatInterval, statusInterval, networkUploadInterval time.Duration, err error) {
 	hsCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
@@ -275,6 +276,7 @@ func handshake(ctx context.Context, conn *websocket.Conn, agentVersion string, i
 		BootID:       uuid.NewString(),
 		Nonce:        challenge.Nonce,
 		Signature:    base64.StdEncoding.EncodeToString(signature),
+		Secure:       secure,
 	})
 	if err != nil {
 		return 0, 0, 0, err
