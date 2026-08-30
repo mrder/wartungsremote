@@ -99,6 +99,24 @@ Per Docker Secrets/Secret Files oder vergleichbarem Secret Store:
 
 Release Signing Private Key **nicht** hier speichern.
 
+**Vor dem ersten echten Release ein eigenes Produktions-Schlüsselpaar
+erzeugen** — niemals einen zu Test-/Entwicklungszwecken erzeugten
+Schlüssel weiterverwenden:
+
+```bash
+wr-release-sign -genkey -out wartungsremote-release
+```
+
+Erzeugt `wartungsremote-release.key` (privat) und
+`wartungsremote-release.pub` (öffentlich). Nur die `.pub`-Datei geht auf
+den Server (`WR_RELEASE_PUBLIC_KEY_FILE`) — die `.key`-Datei verlässt
+den Rechner, auf dem sie erzeugt wurde, im Idealfall nie wieder (siehe
+docs/AGENT.md §15, cmd/wr-release-sign). Ohne konfigurierten
+öffentlichen Schlüssel lehnt der Server `POST /agent/releases` ohnehin
+grundsätzlich ab (`412 not_configured`) — es gibt bewusst keinen
+automatisch erzeugten Schlüssel als Fallback, anders als z. B. beim
+Session Pepper im reinen Dev-Modus.
+
 ## 5a. Datenbank-Runtime-User ohne Superuserrechte
 
 Migrationen (Schema-DDL) laufen mit einer Owner-/Superuser-Rolle — das ist
