@@ -69,5 +69,11 @@ echo "Backup written: $ARCHIVE ($(du -h "$ARCHIVE" | cut -f1))"
 
 if [[ "$RETENTION_DAYS" -gt 0 ]]; then
   DELETED=$(find "$BACKUP_DIR" -maxdepth 1 -name 'wartungsremote-backup-*.tar.gz*' -mtime "+$RETENTION_DAYS" -print -delete | wc -l)
-  [[ "$DELETED" -gt 0 ]] && echo "Pruned $DELETED backup(s) older than $RETENTION_DAYS day(s)"
+  # A plain `[[ ... ]] && echo ...` here would leave the script exiting 1
+  # (from the false `[[ ]]`) on the common case of nothing to prune — cron
+  # would then report every routine backup as a failure. The `if` form's
+  # own exit status is always 0 regardless of which branch ran.
+  if [[ "$DELETED" -gt 0 ]]; then
+    echo "Pruned $DELETED backup(s) older than $RETENTION_DAYS day(s)"
+  fi
 fi
