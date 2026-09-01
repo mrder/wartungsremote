@@ -5,6 +5,17 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added: backup script for native (non-Docker) installs
+
+- `scripts/backup-server.sh` only ever worked for the Docker Compose
+  deployment — it shells out to `docker compose exec postgres pg_dump`.
+  A native install had no working backup path at all. Added
+  `scripts/backup-server-native.sh`: same encrypt/retention behavior,
+  but runs `pg_dump` directly against the DSN in the app's own
+  `secrets/database_url.txt` and collects `server.yaml`/`secrets/` from
+  the app directory instead of a Compose directory. Found and fixed
+  while setting up the first real (non-dev) native deployment.
+
 ### Added: generic response on the public listener for non-API requests
 
 - Anything hitting the agent-facing public port outside its actual

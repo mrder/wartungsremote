@@ -188,6 +188,21 @@ sudo ./scripts/install-backup-cron.sh \
   # optional: --encrypt-passphrase-file /pfad/zur/passphrase.txt
 ```
 
+**Native (kein Docker) Installation:** `scripts/backup-server.sh` setzt
+Docker Compose voraus (`docker compose exec postgres pg_dump ...`) — für
+eine native Installation stattdessen `scripts/backup-server-native.sh`,
+das `pg_dump` direkt gegen die DSN aus `secrets/database_url.txt`
+(Migrations-DSN, hat volle Leserechte) fährt und `server.yaml`/`secrets/`
+aus dem App-Verzeichnis statt aus einem Compose-Verzeichnis sichert.
+Gleiche Flags (`--backup-dir`, `--retention-days`,
+`--encrypt-passphrase-file`), per Cronjob im eigenen Nutzer-Crontab
+(nicht root) eintragen, da der native Prozess selbst auch nicht als root
+läuft:
+
+```bash
+crontab -l 2>/dev/null | { cat; echo "15 3 * * * /pfad/zu/scripts/backup-server-native.sh --app-dir /pfad/zur/installation --backup-dir /pfad/zu/backups --retention-days 14 --encrypt-passphrase-file /pfad/zur/passphrase.txt >> /pfad/zu/backup.log 2>&1"; } | crontab -
+```
+
 Erneutes Ausführen ersetzt den eigenen Cron-Eintrag statt einen zweiten
 anzulegen — Zeitplan/Einstellungen also einfach durch erneuten Aufruf
 ändern, oder direkt die generierte `<backup-dir>/backup.env` editieren.
