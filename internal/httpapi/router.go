@@ -213,6 +213,12 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	public.HandleFunc("GET /health", h.handleHealth)
 	public.HandleFunc("POST /api/v1/agent/enroll", h.handleAgentEnroll)
 	public.HandleFunc("GET /api/v1/agent/control", h.handleAgentControl)
+	// Anything else on this listener — someone opening the bare hostname
+	// in a browser, a scanner probing paths — gets a deliberately
+	// uninformative response instead of a Go default 404 (which at least
+	// confirms "something is listening and routing paths here"). No
+	// branding, no version, no hint this is WartungsRemote.
+	public.HandleFunc("/", handleDeterrent)
 	// wr-helper is a native binary with no browser session; it authenticates
 	// with a single-use ticket instead, so this lives on the public listener
 	// rather than the session-cookie-protected admin one. See docs/RELAY.md.
@@ -242,6 +248,7 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	protected.HandleFunc("GET /api/v1/devices/{id}/network-metrics", h.handleDeviceNetworkMetrics)
 	protected.HandleFunc("GET /api/v1/network-usage", h.handleNetworkUsageSummary)
 	protected.HandleFunc("POST /api/v1/devices/{id}/revoke", h.handleRevokeDevice)
+	protected.HandleFunc("DELETE /api/v1/devices/{id}", h.handleDeleteDevice)
 	protected.HandleFunc("GET /api/v1/devices/{id}/audit", h.handleDeviceAuditLog)
 	protected.HandleFunc("GET /api/v1/audit", h.handleAuditLog)
 	protected.HandleFunc("GET /api/v1/audit/export", h.handleExportAuditLog)
@@ -332,4 +339,15 @@ func NewRouter(deps Dependencies) (*Router, error) {
 func (h *handlers) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"status": "ok", "version": h.version}})
+}
+
+// handleDeterrent answers anything on the public (agent-facing) listener
+// that isn't one of its actual API routes — a browser visiting the bare
+// hostname, or a scanner walking paths. Deliberately generic: no server
+// banner, no product name, no version, nothing that rewards poking at
+// this endpoint further.
+func handleDeterrent(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusForbidden)
+	_, _ = w.Write([]byte(`<!DOCTYPE html><html><head><title>403 Forbidden</title></head><body><h1>403 Forbidden</h1></body></html>`))
 }

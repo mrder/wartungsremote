@@ -5,6 +5,38 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added: generic response on the public listener for non-API requests
+
+- Anything hitting the agent-facing public port outside its actual
+  routes (someone opening the bare hostname in a browser, a scanner
+  walking paths) now gets a deliberately uninformative static 403 page
+  instead of Go's default 404 — no product name, no version, nothing
+  confirming what's actually running there.
+
+### Added: device revoke/delete UI, and a safe way to clean up junk devices
+
+- `POST /devices/:id/revoke` already existed server-side (reauth-gated)
+  but had **no frontend UI at all** — there was genuinely no way to
+  click a button and revoke a device. Added a "Danger zone" section on
+  the device Overview tab (password + MFA code, same reauth pattern as
+  the Account page) that actually calls it.
+- Added real hard-deletion (`DELETE /devices/:id`) for the one case
+  revoke doesn't cover well: an enrollment token that was consumed but
+  the agent never actually came online (e.g. a test enrollment, or a
+  botched install) — these sit forever as dead "Unknown" rows with
+  nothing to clean them up. Deliberately restricted, and enforced in the
+  SQL itself, to devices with no connection history (`last_seen_at IS
+  NULL`) — a device that's ever actually connected can only be revoked,
+  never hard-deleted, so this can never be used to destroy a real
+  device's audit/metrics trail. Only offered in the UI when that
+  condition holds.
+- Revoked devices no longer clutter the main device list by default —
+  a "Show N revoked devices" checkbox reveals them on demand.
+- New DB-backed tests proving the one property that actually matters
+  here: deleting a never-connected device succeeds, but deleting one
+  that's ever called `UpdateConnectivity` is refused outright
+  (`ErrHasHistory`) and leaves the row untouched.
+
 ### Added: HTTPS/security configuration advisories (agent v0.2.1)
 
 - wr-core deliberately never terminates TLS itself (a reverse proxy is
