@@ -354,9 +354,10 @@ const deterrentHTML = `<!DOCTYPE html>
 <meta charset="utf-8">
 <title>Nothing here</title>
 <style>
+  html, body { height:100%; margin:0; }
   body { background:#0b0e14; color:#c9d1d9; font-family:system-ui,-apple-system,Segoe UI,sans-serif;
-         display:flex; align-items:center; justify-content:center; height:100vh; margin:0; text-align:center; }
-  .box { max-width:420px; padding:2rem; }
+         display:flex; align-items:center; justify-content:center; text-align:center; }
+  .box { max-width:420px; padding:2rem; margin:0 auto; }
   h1 { font-size:1.4rem; margin-bottom:0.5rem; }
   p { color:#8b949e; line-height:1.5; }
   a { color:#58a6ff; text-decoration:none; }
@@ -367,7 +368,7 @@ const deterrentHTML = `<!DOCTYPE html>
   <div class="box">
     <h1>Looks like you took a wrong turn.</h1>
     <p>There's nothing to see at this address.</p>
-    <p>Questions? <a href="https://sonnyathome.online">sonnyathome.online</a></p>
+    <p>Questions? <a href="https://web.sonnyathome.online">sonnyathome.online</a></p>
   </div>
 </body>
 </html>`
