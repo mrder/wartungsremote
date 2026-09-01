@@ -341,13 +341,39 @@ func (h *handlers) handleHealth(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"status": "ok", "version": h.version}})
 }
 
-// handleDeterrent answers anything on the public (agent-facing) listener
-// that isn't one of its actual API routes — a browser visiting the bare
-// hostname, or a scanner walking paths. Deliberately generic: no server
-// banner, no product name, no version, nothing that rewards poking at
-// this endpoint further.
+// deterrentHTML is served for anything on the public (agent-facing)
+// listener that isn't one of its actual API routes — a browser visiting
+// the bare hostname, or a scanner walking paths. Deliberately says
+// nothing about what's actually running here (no product name, no
+// version, no framework fingerprint) — only the operator's own,
+// already-public brand, which reveals nothing an attacker couldn't
+// already see elsewhere (e.g. this dashboard's own footer).
+const deterrentHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nothing here</title>
+<style>
+  body { background:#0b0e14; color:#c9d1d9; font-family:system-ui,-apple-system,Segoe UI,sans-serif;
+         display:flex; align-items:center; justify-content:center; height:100vh; margin:0; text-align:center; }
+  .box { max-width:420px; padding:2rem; }
+  h1 { font-size:1.4rem; margin-bottom:0.5rem; }
+  p { color:#8b949e; line-height:1.5; }
+  a { color:#58a6ff; text-decoration:none; }
+  a:hover { text-decoration:underline; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <h1>Looks like you took a wrong turn.</h1>
+    <p>There's nothing to see at this address.</p>
+    <p>Questions? <a href="https://sonnyathome.online">sonnyathome.online</a></p>
+  </div>
+</body>
+</html>`
+
 func handleDeterrent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusForbidden)
-	_, _ = w.Write([]byte(`<!DOCTYPE html><html><head><title>403 Forbidden</title></head><body><h1>403 Forbidden</h1></body></html>`))
+	_, _ = w.Write([]byte(deterrentHTML))
 }
