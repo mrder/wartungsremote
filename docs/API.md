@@ -153,7 +153,21 @@ Startet Agent-Roundtrip-/Capability-Test.
 
 ### POST `/devices/:id/revoke`
 
-Reauthentication erforderlich. Widerruft Device Credential und beendet Sessions.
+Reauthentication erforderlich. Widerruft Device Credential und beendet
+Sessions. Setzt nur `status='revoked'` — Zeile bleibt bestehen,
+Verlauf/Audit bleiben erhalten. Der `install_id` bleibt dauerhaft
+belegt, d.h. dieses Install kann sich nie wieder neu registrieren.
+
+### DELETE `/devices/:id`
+
+Reauthentication erforderlich (wie `/revoke`). Entfernt die
+Geräte-Zeile **endgültig** — aber nur, wenn das Gerät noch nie
+verbunden war (`last_seen_at IS NULL`), serverseitig hart erzwungen
+(nicht nur clientseitig geprüft). Für den Aufräum-Fall "Enrollment-Token
+wurde verbraucht, aber der Agent hat sich nie tatsächlich gemeldet" —
+z.B. ein Test-Enrollment, das nie zu einem echten Client wurde. Bei
+einem Gerät mit Verlauf: `409 has_history` — dafür `/revoke` benutzen,
+das den Verlauf erhält statt ihn zu zerstören.
 
 ## 6. Metrics
 

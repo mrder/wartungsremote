@@ -33,15 +33,205 @@
   --transition: 150ms ease;
 }
 
+/* Themes — selected in Settings, persisted to localStorage (wr_theme),
+   applied via [data-theme] on <html> (see main.tsx / AppearanceContext).
+   The bare :root above *is* the "dark" theme's values; these are the
+   overrides for every other one. Deliberately vary shape (radius/shadow)
+   and not just color, so each theme has a genuinely different feel. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f6f8;
+  --bg-elevated: #ffffff;
+  --panel: #ffffff;
+  --panel-hover: #eef0f3;
+  --border: #dde1e6;
+  --border-soft: #e8eaed;
+  --text: #1a1d23;
+  --muted: #5b6470;
+  --muted-soft: #8a919a;
+  --accent: #3b6fe0;
+  --accent-hover: #2c5cc9;
+  --accent-soft: rgba(59, 111, 224, 0.1);
+  --green: #1f9d55;
+  --yellow: #a5720f;
+  --red: #c8342c;
+  --gray: #6b7280;
+  --shadow-sm: 0 1px 2px rgba(20, 25, 35, 0.07);
+  --shadow: 0 4px 16px rgba(20, 25, 35, 0.08);
+}
+
+:root[data-theme="scifi"] {
+  color-scheme: dark;
+  font-family: "SF Mono", "Cascadia Code", Consolas, "Courier New", monospace;
+  --bg: #05070a;
+  --bg-elevated: #070b12;
+  --panel: #0a0f1a;
+  --panel-hover: #101a2c;
+  --border: #1a2740;
+  --border-soft: #131e30;
+  --text: #d6f5ff;
+  --muted: #6fa8c9;
+  --muted-soft: #43607a;
+  --accent: #00e5ff;
+  --accent-hover: #52eeff;
+  --accent-soft: rgba(0, 229, 255, 0.14);
+  --green: #39ff8f;
+  --yellow: #ffe14d;
+  --red: #ff3d6e;
+  --gray: #5c7a99;
+  --radius-sm: 2px;
+  --radius: 3px;
+  --radius-lg: 4px;
+  --shadow-sm: 0 0 6px rgba(0, 229, 255, 0.2);
+  --shadow: 0 0 28px rgba(0, 229, 255, 0.14);
+}
+
+:root[data-theme="modern"] {
+  color-scheme: dark;
+  --bg: #121218;
+  --bg-elevated: #17171f;
+  --panel: #1c1c26;
+  --panel-hover: #242432;
+  --border: #2c2c3a;
+  --border-soft: #23232f;
+  --text: #f2f1f7;
+  --muted: #9d9bb0;
+  --muted-soft: #6b6980;
+  --accent: #8b5cf6;
+  --accent-hover: #a479f9;
+  --accent-soft: rgba(139, 92, 246, 0.16);
+  --green: #22d38f;
+  --yellow: #f5a623;
+  --red: #f0466e;
+  --gray: #7b7a90;
+  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-lg: 22px;
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow: 0 10px 32px rgba(139, 92, 246, 0.18);
+}
+
+:root[data-theme="classic"] {
+  color-scheme: light;
+  font-family: Arial, Helvetica, sans-serif;
+  --bg: #e8e9eb;
+  --bg-elevated: #f4f4f5;
+  --panel: #ffffff;
+  --panel-hover: #ececee;
+  --border: #c7c9cd;
+  --border-soft: #d7d9dc;
+  --text: #202225;
+  --muted: #55585e;
+  --muted-soft: #83868c;
+  --accent: #2f5496;
+  --accent-hover: #24406f;
+  --accent-soft: rgba(47, 84, 150, 0.08);
+  --green: #2e7d32;
+  --yellow: #8a6110;
+  --red: #a3271f;
+  --gray: #6e7075;
+  --radius-sm: 2px;
+  --radius: 3px;
+  --radius-lg: 4px;
+  --shadow-sm: 0 1px 1px rgba(0, 0, 0, 0.08);
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+:root[data-theme="retro"] {
+  color-scheme: dark;
+  font-family: "Courier New", Consolas, monospace;
+  --bg: #03110a;
+  --bg-elevated: #05170c;
+  --panel: #071c10;
+  --panel-hover: #0b2716;
+  --border: #123d20;
+  --border-soft: #0d2e18;
+  --text: #4dff88;
+  --muted: #2fcc6a;
+  --muted-soft: #1f9950;
+  --accent: #7dff9e;
+  --accent-hover: #a3ffc0;
+  --accent-soft: rgba(77, 255, 136, 0.12);
+  --green: #4dff88;
+  --yellow: #d4ff4d;
+  --red: #ff5555;
+  --gray: #3a8f57;
+  --radius-sm: 0px;
+  --radius: 0px;
+  --radius-lg: 0px;
+  --shadow-sm: 0 0 4px rgba(77, 255, 136, 0.3);
+  --shadow: 0 0 18px rgba(77, 255, 136, 0.2);
+}
+
 * { box-sizing: border-box; }
 
 html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 
+html, body, #root {
+  height: 100%;
+}
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
   line-height: 1.5;
+}
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+.app-shell {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Sidebar layout variant (Settings → Erscheinungsbild) — the alternative
+   to .topbar's horizontal nav. Shares the same nav links, just arranged
+   vertically in a fixed column instead of a row. */
+.app-with-sidebar {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+}
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--border-soft);
+  padding: var(--space-5) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.sidebar-logo { display: block; }
+.sidebar-logo h1 { font-size: 1.2rem; }
+.sidebar-nav { display: flex; flex-direction: column; gap: var(--space-1); flex: 1; }
+.sidebar-nav a, .sidebar-nav .alerts-badge-link {
+  color: var(--muted);
+  font-weight: 550;
+  font-size: 0.9rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition), background var(--transition);
+}
+.sidebar-nav a:hover, .sidebar-nav .alerts-badge-link:hover { background: var(--panel-hover); color: var(--text); text-decoration: none; }
+.sidebar-nav a.active { background: var(--accent-soft); color: var(--accent); }
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-soft);
+}
+.sidebar-footer .topbar-account { align-items: flex-start; }
+.sidebar-main {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: var(--space-5) var(--space-6);
 }
 
 h1, h2, h3, h4 { margin: 0; font-weight: 650; letter-spacing: -0.01em; }
@@ -140,16 +330,20 @@ input::placeholder { color: var(--muted-soft); }
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-6);
   margin: 0 0 var(--space-5);
   padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--border-soft);
 }
-.topbar h1 { display: flex; align-items: center; gap: var(--space-2); }
-.topbar div { display: flex; gap: var(--space-4); align-items: center; }
-.topbar div a { color: var(--muted); font-weight: 550; font-size: 0.9rem; transition: color var(--transition); }
+.topbar > a { flex-shrink: 0; }
+.topbar h1 { display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
+.topbar div { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-3); align-items: center; row-gap: var(--space-2); }
+.topbar div a { color: var(--muted); font-weight: 550; font-size: 0.9rem; transition: color var(--transition); white-space: nowrap; }
 .topbar div a:hover { color: var(--text); text-decoration: none; }
+.topbar div a.active { color: var(--accent); }
 .topbar div > span { color: var(--muted); font-size: 0.88rem; }
-.topbar div button { background: transparent; color: var(--muted); border: 1px solid var(--border); padding: 0.4rem 0.85rem; }
+.topbar div button { background: transparent; color: var(--muted); border: 1px solid var(--border); padding: 0.4rem 0.85rem; white-space: nowrap; }
 .topbar div button:hover:not(:disabled) { background: var(--panel-hover); color: var(--text); box-shadow: none; }
 
 .stat-row { display: flex; gap: var(--space-4); margin-bottom: var(--space-5); }
@@ -179,6 +373,40 @@ input::placeholder { color: var(--muted-soft); }
 
 .toolbar { display: flex; gap: var(--space-2); margin-bottom: var(--space-4); flex-wrap: wrap; align-items: center; }
 .toolbar input { flex: 1; min-width: 180px; }
+
+.field-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+.field-form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 550;
+}
+.field-form input, .field-form select { width: auto; }
+.field-form label span { color: var(--muted-soft); font-weight: 400; font-size: 0.8rem; }
+
+.settings-group {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+.settings-group h2 {
+  font-size: 1rem;
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-soft);
+}
+.settings-group h3 { margin-top: var(--space-5); }
+.settings-group h3:first-of-type { margin-top: 0; }
 
 .enrollment-panel {
   background: var(--accent-soft);
@@ -343,6 +571,27 @@ table caption { caption-side: top; padding: var(--space-3) 0; font-size: 0.85rem
 .help-content code { background: var(--bg-elevated); padding: 0.1rem 0.35rem; border-radius: 4px; }
 .help-content pre code { background: none; padding: 0; }
 
+.topbar-account {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.3;
+  gap: 1px;
+  user-select: none;
+}
+.topbar-username {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.inactivity-timer {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--muted-soft);
+  white-space: nowrap;
+}
+.inactivity-timer-warn { color: var(--yellow); }
+
 .alerts-badge-link { display: inline-flex; align-items: center; gap: var(--space-2); }
 .alerts-badge-count {
   background: var(--red);
@@ -359,8 +608,16 @@ table caption { caption-side: top; padding: var(--space-3) 0; font-size: 0.85rem
 }
 
 .app-footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   text-align: center;
-  padding: var(--space-5) var(--space-4);
+  margin-top: var(--space-6);
+  padding: var(--space-4);
+  border-top: 1px solid var(--border-soft);
   font-size: 0.78rem;
   color: var(--muted-soft, var(--muted));
 }
+.app-footer-sep { color: var(--border); }

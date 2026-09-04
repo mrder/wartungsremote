@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 const STATUS_COLORS: Record<string, string> = {
   online: 'green',
   connection_lost: 'yellow',
@@ -10,6 +12,8 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export default function StatusBadge({ kind, value }: { kind: 'status' | 'health'; value: string }) {
+  const { t } = useTranslation()
   const color = STATUS_COLORS[value] ?? 'gray'
-  return <span className={`badge badge-${color}`} title={`${kind}: ${value}`}>{value}</span>
+  const label = t(`${kind}Values.${value}`, { defaultValue: value })
+  return <span className={`badge badge-${color}`} title={`${kind}: ${value}`}>{label}</span>
 }

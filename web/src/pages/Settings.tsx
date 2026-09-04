@@ -1,10 +1,22 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { SettingsApi, AuditApi, ApiError, type ChainVerification } from '../api'
+import { useTranslation, Trans } from 'react-i18next'
+import { SettingsApi, AuditApi, ReauthApi, AccountApi, ApiError, type ChainVerification } from '../api'
 import { useAuth } from '../AuthContext'
+import { useAppearance, THEMES, LAYOUTS, type Theme, type LayoutMode } from '../AppearanceContext'
 
 export default function Settings() {
+  const { t, i18n } = useTranslation()
   const { user } = useAuth()
+  const { theme, layout: appearanceLayout, setTheme, setLayout } = useAppearance()
+
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [mfaCode, setMfaCode] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [accountError, setAccountError] = useState('')
+  const [accountBusy, setAccountBusy] = useState(false)
+  const [passwordChanged, setPasswordChanged] = useState(false)
+
   const [rawHours, setRawHours] = useState('')
   const [hourlyHours, setHourlyHours] = useState('')
   const [networkRawHours, setNetworkRawHours] = useState('')
@@ -32,33 +44,34 @@ export default function Settings() {
       setRawHours(String(s.raw_retention_hours))
       setHourlyHours(String(s.hourly_retention_hours))
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load settings')
+      setError(err instanceof ApiError ? err.message : t('settings.loadFailed'))
     }
     try {
       const n = await SettingsApi.getNetworkRetention()
       setNetworkRawHours(String(n.raw_retention_hours))
       setNetworkHourlyHours(String(n.hourly_retention_hours))
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load settings')
+      setError(err instanceof ApiError ? err.message : t('settings.loadFailed'))
     }
     try {
       const r = await SettingsApi.getSupportCredentialRotation()
       setRotationDays(String(r.rotation_days))
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load settings')
+      setError(err instanceof ApiError ? err.message : t('settings.loadFailed'))
     }
     try {
-      const t = await SettingsApi.getTelegram()
-      setTelegramConfigured(t.configured)
-      setTelegramUpdatedAt(t.updated_at)
-      setChatId(t.chat_id ?? '')
+      const tg = await SettingsApi.getTelegram()
+      setTelegramConfigured(tg.configured)
+      setTelegramUpdatedAt(tg.updated_at)
+      setChatId(tg.chat_id ?? '')
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load settings')
+      setError(err instanceof ApiError ? err.message : t('settings.loadFailed'))
     }
   }
 
   useEffect(() => {
     load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function save(e: React.FormEvent) {
@@ -69,7 +82,7 @@ export default function Settings() {
       await SettingsApi.setRetention(Number(rawHours), Number(hourlyHours))
       setSaved(true)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to save settings')
+      setError(err instanceof ApiError ? err.message : t('settings.saveFailed'))
     }
   }
 
@@ -81,7 +94,7 @@ export default function Settings() {
       await SettingsApi.setNetworkRetention(Number(networkRawHours), Number(networkHourlyHours))
       setNetworkSaved(true)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to save settings')
+      setError(err instanceof ApiError ? err.message : t('settings.saveFailed'))
     }
   }
 
@@ -93,7 +106,7 @@ export default function Settings() {
       await SettingsApi.setSupportCredentialRotation(Number(rotationDays))
       setRotationSaved(true)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to save settings')
+      setError(err instanceof ApiError ? err.message : t('settings.saveFailed'))
     }
   }
 
@@ -108,7 +121,7 @@ export default function Settings() {
       setTelegramSaved(true)
       load()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to save settings')
+      setError(err instanceof ApiError ? err.message : t('settings.saveFailed'))
     }
   }
 
@@ -119,9 +132,37 @@ export default function Settings() {
     try {
       setChainResult(await AuditApi.verifyChain())
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to verify audit chain')
+      setError(err instanceof ApiError ? err.message : t('settings.audit.verifyFailed'))
     } finally {
       setChainBusy(false)
+    }
+  }
+
+  async function changePassword(e: React.FormEvent) {
+    e.preventDefault()
+    setAccountError('')
+    setPasswordChanged(false)
+    if (newPassword.length < 12) {
+      setAccountError(t('account.passwordTooShort'))
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setAccountError(t('account.passwordMismatch'))
+      return
+    }
+    setAccountBusy(true)
+    try {
+      const reauth = await ReauthApi.reauth(currentPassword, mfaCode)
+      await AccountApi.changePassword(reauth.reauth_id, newPassword)
+      setCurrentPassword('')
+      setMfaCode('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setPasswordChanged(true)
+    } catch (err) {
+      setAccountError(err instanceof ApiError ? err.message : t('account.changeFailed'))
+    } finally {
+      setAccountBusy(false)
     }
   }
 
@@ -131,30 +172,104 @@ export default function Settings() {
     setTelegramBusy(true)
     try {
       await SettingsApi.testTelegram()
-      setTelegramTestMsg('Test message sent — check your Telegram chat.')
+      setTelegramTestMsg(t('settings.telegram.testSent'))
     } catch (err) {
-      setTelegramTestMsg(err instanceof ApiError ? err.message : 'Failed to send test message')
+      setTelegramTestMsg(err instanceof ApiError ? err.message : t('settings.telegram.testFailed'))
     } finally {
       setTelegramBusy(false)
     }
   }
 
   return (
-    <div className="page">
-      <Link to="/">&larr; Back to devices</Link>
-      <h1>Settings</h1>
+    <>
+      <h1>{t('settings.title')}</h1>
+      <p>{t('account.signedInAs')} <code>{user?.username}</code>.</p>
 
-      <h3>Monitoring history retention</h3>
-      <p>
-        How long raw (high-resolution) and hourly-averaged CPU/RAM/disk history is kept before
-        being deleted. Alerts are not affected by this — they're kept indefinitely until manually
-        acknowledged/resolved/deleted.
-      </p>
-      {error && <p className="error">{error}</p>}
-      {saved && <p>Saved.</p>}
-      <form onSubmit={save} className="toolbar" style={{ flexWrap: 'wrap' }}>
+      <section className="settings-group">
+        <h2>{t('settings.group.account')}</h2>
+        <h3>{t('account.changePassword')}</h3>
+        <p>{t('account.changePasswordHint')}</p>
+        {accountError && <p className="error">{accountError}</p>}
+        {passwordChanged && <p>{t('account.passwordChanged')}</p>}
+        <form onSubmit={changePassword} className="field-form">
+          <label>
+            {t('account.currentPassword')}
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              required
+            />
+          </label>
+          <label>
+            {t('account.mfaCode')}
+            <input
+              value={mfaCode}
+              onChange={(e) => setMfaCode(e.target.value)}
+              required
+              style={{ width: '6rem' }}
+            />
+          </label>
+          <label>
+            {t('account.newPassword')}
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+            />
+          </label>
+          <label>
+            {t('account.confirmNewPassword')}
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+            />
+          </label>
+          <button type="submit" disabled={accountBusy}>{accountBusy ? t('account.changing') : t('account.changePassword')}</button>
+        </form>
+      </section>
+
+      <section className="settings-group">
+        <h2>{t('settings.group.display')}</h2>
+        <h3>{t('settings.language.title')}</h3>
+        <p>{t('settings.language.hint')}</p>
+        <div className="toolbar">
+          <select value={i18n.language} onChange={(e) => i18n.changeLanguage(e.target.value)}>
+            <option value="en">English</option>
+            <option value="de">Deutsch</option>
+          </select>
+        </div>
+
+        <h3>{t('settings.appearance.title')}</h3>
+        <p>{t('settings.appearance.hint')}</p>
+        <div className="field-form">
+          <label>
+            {t('settings.appearance.theme')}
+            <select value={theme} onChange={(e) => setTheme(e.target.value as Theme)}>
+              {THEMES.map((th) => <option key={th} value={th}>{t(`settings.appearance.themeNames.${th}`)}</option>)}
+            </select>
+          </label>
+          <label>
+            {t('settings.appearance.layout')}
+            <select value={appearanceLayout} onChange={(e) => setLayout(e.target.value as LayoutMode)}>
+              {LAYOUTS.map((l) => <option key={l} value={l}>{t(`settings.appearance.layoutNames.${l}`)}</option>)}
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section className="settings-group">
+        <h2>{t('settings.group.monitoring')}</h2>
+        <h3>{t('settings.retention.title')}</h3>
+        <p>{t('settings.retention.hint')}</p>
+        {error && <p className="error">{error}</p>}
+        {saved && <p>{t('common.saved')}</p>}
+        <form onSubmit={save} className="field-form">
         <label>
-          Raw retention (hours):{' '}
+          {t('settings.retention.rawHours')}:{' '}
           <input
             type="number"
             min="1"
@@ -164,11 +279,11 @@ export default function Settings() {
             style={{ width: '6rem' }}
           />
           {rawHours && !isNaN(Number(rawHours)) && (
-            <span style={{ marginLeft: '0.5rem' }}>({(Number(rawHours) / 24).toFixed(1)} days)</span>
+            <span style={{ marginLeft: '0.5rem' }}>({t('settings.retention.days', { count: Number((Number(rawHours) / 24).toFixed(1)) })})</span>
           )}
         </label>
         <label>
-          Hourly-average retention (hours):{' '}
+          {t('settings.retention.hourlyHours')}:{' '}
           <input
             type="number"
             min="1"
@@ -178,23 +293,18 @@ export default function Settings() {
             style={{ width: '6rem' }}
           />
           {hourlyHours && !isNaN(Number(hourlyHours)) && (
-            <span style={{ marginLeft: '0.5rem' }}>({(Number(hourlyHours) / 24).toFixed(1)} days)</span>
+            <span style={{ marginLeft: '0.5rem' }}>({t('settings.retention.days', { count: Number((Number(hourlyHours) / 24).toFixed(1)) })})</span>
           )}
         </label>
-        <button type="submit">Save</button>
+        <button type="submit">{t('common.save')}</button>
       </form>
 
-      <h3>Network traffic history retention</h3>
-      <p>
-        Same idea, but for network traffic history specifically — it's collected far more often
-        (roughly once a minute per device, buffered locally on the agent and uploaded in batches)
-        than CPU/RAM/disk, so it gets its own, shorter default raw retention to keep the row volume
-        reasonable; the hourly rollup still covers the long term.
-      </p>
-      {networkSaved && <p>Saved.</p>}
-      <form onSubmit={saveNetworkRetention} className="toolbar" style={{ flexWrap: 'wrap' }}>
+        <h3>{t('settings.networkRetention.title')}</h3>
+        <p>{t('settings.networkRetention.hint')}</p>
+      {networkSaved && <p>{t('common.saved')}</p>}
+      <form onSubmit={saveNetworkRetention} className="field-form">
         <label>
-          Raw retention (hours):{' '}
+          {t('settings.retention.rawHours')}:{' '}
           <input
             type="number"
             min="1"
@@ -204,11 +314,11 @@ export default function Settings() {
             style={{ width: '6rem' }}
           />
           {networkRawHours && !isNaN(Number(networkRawHours)) && (
-            <span style={{ marginLeft: '0.5rem' }}>({(Number(networkRawHours) / 24).toFixed(1)} days)</span>
+            <span style={{ marginLeft: '0.5rem' }}>({t('settings.retention.days', { count: Number((Number(networkRawHours) / 24).toFixed(1)) })})</span>
           )}
         </label>
         <label>
-          Hourly-total retention (hours):{' '}
+          {t('settings.networkRetention.hourlyHours')}:{' '}
           <input
             type="number"
             min="1"
@@ -218,24 +328,21 @@ export default function Settings() {
             style={{ width: '6rem' }}
           />
           {networkHourlyHours && !isNaN(Number(networkHourlyHours)) && (
-            <span style={{ marginLeft: '0.5rem' }}>({(Number(networkHourlyHours) / 24).toFixed(1)} days)</span>
+            <span style={{ marginLeft: '0.5rem' }}>({t('settings.retention.days', { count: Number((Number(networkHourlyHours) / 24).toFixed(1)) })})</span>
           )}
         </label>
-        <button type="submit">Save</button>
+        <button type="submit">{t('common.save')}</button>
       </form>
+      </section>
 
-      <h3>Remote-support account rotation</h3>
-      <p>
-        Automatically generates and applies a new password for the "remotewartung" account on every
-        device on a schedule — it's machine-generated and never seen by anyone, so unlike a human
-        login password there's no downside to rotating it, only upside: it limits how long a copy
-        would stay useful if the database were ever compromised. Set to 0 to disable (the default —
-        rotation still works on demand from a device's Remote tab either way).
-      </p>
-      {rotationSaved && <p>Saved.</p>}
-      <form onSubmit={saveRotation} className="toolbar" style={{ flexWrap: 'wrap' }}>
+      <section className="settings-group">
+      <h2>{t('settings.group.security')}</h2>
+      <h3>{t('settings.rotation.title')}</h3>
+      <p>{t('settings.rotation.hint')}</p>
+      {rotationSaved && <p>{t('common.saved')}</p>}
+      <form onSubmit={saveRotation} className="field-form">
         <label>
-          Rotate every:{' '}
+          {t('settings.rotation.rotateEvery')}:{' '}
           <input
             type="number"
             min="0"
@@ -244,90 +351,78 @@ export default function Settings() {
             required
             style={{ width: '6rem' }}
           />
-          {' '}days (0 = disabled)
+          {' '}{t('settings.rotation.daysDisabled')}
         </label>
-        <button type="submit">Save</button>
+        <button type="submit">{t('common.save')}</button>
       </form>
 
-      <h3>Telegram alert notifications</h3>
-      <p>
-        Sends a Telegram message every time a new alert opens (docs/TODO.md lists email/ntfy/webhooks
-        as possible future channels — Telegram is the first one built). Setup:
-      </p>
+      {user?.permissions.includes('audit.read') && (
+        <>
+          <h3>{t('settings.audit.title')}</h3>
+          <p>{t('settings.audit.hint')}</p>
+          <div className="toolbar">
+            <button type="button" onClick={verifyChain} disabled={chainBusy}>
+              {chainBusy ? t('settings.audit.verifying') : t('settings.audit.verifyChain')}
+            </button>
+          </div>
+          {chainResult && (
+            chainResult.Valid ? (
+              <p>
+                {t('settings.audit.chainIntact', { count: chainResult.EntriesCheck })}
+                {chainResult.EntriesPreChain > 0 &&
+                  ' ' + t('settings.audit.preChainNote', { count: chainResult.EntriesPreChain })}
+              </p>
+            ) : (
+              <p className="error">
+                {t('settings.audit.chainBroken', { id: chainResult.BrokenAtID, count: chainResult.EntriesCheck })}
+              </p>
+            )
+          )}
+        </>
+      )}
+      </section>
+
+      <section className="settings-group">
+      <h2>{t('settings.group.notifications')}</h2>
+      <h3>{t('settings.telegram.title')}</h3>
+      <p>{t('settings.telegram.hint')}</p>
       <ol>
-        <li>In Telegram, message <strong>@BotFather</strong>, send <code>/newbot</code>, and follow the
-          prompts. It gives you a bot token like <code>123456:ABC-DEF1234...</code>.</li>
-        <li>Message your new bot directly (or add it to a group and mention it once) so it can see the chat.</li>
-        <li>Open <code>https://api.telegram.org/bot&lt;YOUR_TOKEN&gt;/getUpdates</code> in a browser
-          (replace <code>&lt;YOUR_TOKEN&gt;</code>) and find <code>"chat":{'{'}"id":...{'}'}</code> in the
-          response — that number is your chat ID.</li>
-        <li>Paste both below, save, then send a test message to confirm it works.</li>
+        <li><Trans i18nKey="settings.telegram.step1"><strong>@BotFather</strong><code>/newbot</code></Trans></li>
+        <li>{t('settings.telegram.step2')}</li>
+        <li><Trans i18nKey="settings.telegram.step3"><code>https://api.telegram.org/bot&lt;YOUR_TOKEN&gt;/getUpdates</code><code>&lt;YOUR_TOKEN&gt;</code><code>"chat":{'{'}"id":...{'}'}</code></Trans></li>
+        <li>{t('settings.telegram.step4')}</li>
       </ol>
       {telegramConfigured && (
         <p>
-          Currently configured (chat ID <code>{chatId}</code>, last set{' '}
-          {telegramUpdatedAt ? new Date(telegramUpdatedAt).toLocaleString() : '-'}). Enter a new bot
-          token below only if you want to replace it.
+          {t('settings.telegram.currentlyConfigured', { chatId, updatedAt: telegramUpdatedAt ? new Date(telegramUpdatedAt).toLocaleString() : '-' })}
         </p>
       )}
-      {telegramSaved && <p>Saved.</p>}
+      {telegramSaved && <p>{t('common.saved')}</p>}
       {telegramTestMsg && <p>{telegramTestMsg}</p>}
-      <form onSubmit={saveTelegram} className="toolbar" style={{ flexWrap: 'wrap' }}>
+      <form onSubmit={saveTelegram} className="field-form">
         <input
           type="password"
-          placeholder="Bot token"
+          placeholder={t('settings.telegram.botToken')}
           value={botToken}
           onChange={(e) => setBotToken(e.target.value)}
           required
           style={{ minWidth: 260 }}
         />
         <input
-          placeholder="Chat ID"
+          placeholder={t('settings.telegram.chatId')}
           value={chatId}
           onChange={(e) => setChatId(e.target.value)}
           required
           style={{ minWidth: 160 }}
         />
-        <button type="submit">Save</button>
+        <button type="submit">{t('common.save')}</button>
         {telegramConfigured && (
           <button type="button" onClick={testTelegram} disabled={telegramBusy}>
-            {telegramBusy ? 'Sending...' : 'Send test message'}
+            {telegramBusy ? t('settings.telegram.sending') : t('settings.telegram.sendTest')}
           </button>
         )}
       </form>
-
-      {user?.permissions.includes('audit.read') && (
-        <>
-          <h3>Audit log integrity</h3>
-          <p>
-            Every audit entry is cryptographically chained to the one before it, so an entry can't be
-            edited or deleted afterwards without breaking the chain from that point on — this
-            recomputes the whole chain from scratch and checks it against what's stored. Read-only, but
-            scans the entire audit log, so it's a manual action rather than something run on every page
-            load.
-          </p>
-          <div className="toolbar">
-            <button type="button" onClick={verifyChain} disabled={chainBusy}>
-              {chainBusy ? 'Verifying...' : 'Verify chain'}
-            </button>
-          </div>
-          {chainResult && (
-            chainResult.Valid ? (
-              <p>
-                Chain intact — {chainResult.EntriesCheck} entries checked, no tampering detected.
-                {chainResult.EntriesPreChain > 0 &&
-                  ` (${chainResult.EntriesPreChain} older entries predate this feature and aren't covered by the chain.)`}
-              </p>
-            ) : (
-              <p className="error">
-                Chain broken at entry #{chainResult.BrokenAtID} ({chainResult.EntriesCheck} entries
-                checked before the break was found) — this entry or one before it no longer matches what
-                was originally recorded.
-              </p>
-            )
-          )}
-        </>
-      )}
-    </div>
+      </section>
+    </>
   )
 }

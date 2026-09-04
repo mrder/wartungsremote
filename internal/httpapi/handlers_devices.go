@@ -416,6 +416,47 @@ func (h *handlers) handleRevokeDevice(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"state": "revoked"}, nil)
 }
 
+// handleDeleteDevice permanently removes a device row — deliberately
+// restricted to devices that have never actually connected (no
+// last_seen_at), so this can never be used to destroy a real device's
+// audit/metrics history; that's what Revoke is for. This covers the
+// common "an enrollment token was created/consumed but the agent never
+// actually came online" cleanup case (docs/API.md §5), without ever
+// risking real history loss. Same reauth bar as Revoke — both are
+// permanent, irreversible actions on device identity.
+func (h *handlers) handleDeleteDevice(w http.ResponseWriter, r *http.Request) {
+	d, ok := h.loadDeviceWithAccess(w, r, authpkg.PermCredentialRevoke)
+	if !ok {
+		return
+	}
+	if d.LastSeenAt != nil {
+		writeErr(w, http.StatusConflict, "has_history", "This device has connected before and has history — revoke it instead of deleting")
+		return
+	}
+
+	var req struct {
+		ReauthID string `json:"reauth_id"`
+	}
+	_ = decodeJSON(r, &req)
+	user, _ := authpkg.UserFromContext(r.Context())
+	valid, err := h.auth.ConsumeReauth(r.Context(), user.ID, req.ReauthID)
+	if err != nil || !valid {
+		writeErr(w, http.StatusForbidden, "privilege_required", "Reauthentication required")
+		return
+	}
+
+	if err := h.devices.Delete(r.Context(), d.ID); err != nil {
+		if err == device.ErrHasHistory {
+			writeErr(w, http.StatusConflict, "has_history", "This device has connected before and has history — revoke it instead of deleting")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to delete device")
+		return
+	}
+	_ = h.audit.Record(r.Context(), audit.Event{ActorType: audit.ActorUser, ActorID: &user.ID, DeviceID: &d.ID, EventType: audit.EventDeviceDeleted, Result: audit.ResultSuccess, SourceIP: h.clientIP(r), Metadata: map[string]any{"display_name": d.DisplayName}})
+	writeJSON(w, http.StatusOK, map[string]any{"state": "deleted"}, nil)
+}
+
 // parseAuditFilter builds an audit.Filter from the standard query params
 // shared by the list and export endpoints (event_type/actor_id/device_id/
 // from/to). Returns ok=false after already writing an error response.

@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 interface Point {
   t: number // ms epoch
   v: number
@@ -18,11 +20,12 @@ const PAD_BOTTOM = 20
 const PAD_TOP = 10
 
 export default function MetricsChart({ title, points, unit, max, color = 'var(--accent, #4a9eff)' }: Props) {
+  const { t } = useTranslation()
   if (points.length === 0) {
     return (
       <div className="metrics-chart">
         <h4>{title}</h4>
-        <p>No data in this range.</p>
+        <p>{t('metricsChart.noData')}</p>
       </div>
     )
   }
@@ -36,8 +39,8 @@ export default function MetricsChart({ title, points, unit, max, color = 'var(--
   const plotW = WIDTH - PAD_LEFT - 10
   const plotH = HEIGHT - PAD_TOP - PAD_BOTTOM
 
-  function x(t: number) {
-    return PAD_LEFT + ((t - minT) / spanT) * plotW
+  function x(ts: number) {
+    return PAD_LEFT + ((ts - minT) / spanT) * plotW
   }
   function y(v: number) {
     return PAD_TOP + plotH - (Math.min(v, maxV) / maxV) * plotH

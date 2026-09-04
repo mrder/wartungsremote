@@ -46,6 +46,15 @@ type ServerConfig struct {
 		NetworkUploadInterval time.Duration `yaml:"network_upload_interval"`
 		EnrollmentTTL         time.Duration `yaml:"enrollment_ttl"`
 		ReconnectMaxBackoff   time.Duration `yaml:"reconnect_max_backoff"`
+		// GitHubReleaseSync periodically imports agent-* GitHub Releases as
+		// agent_versions rows (docs/AGENT.md §15) instead of requiring manual
+		// entry through the dashboard. Every import still goes through
+		// agentrelease.Repo.Create's Ed25519 signature verification against
+		// the same trusted offline key as the manual form — GitHub is only
+		// ever a transport, never a trust source. Interval 0 disables sync
+		// entirely (the manual form keeps working either way).
+		GitHubRepo             string        `yaml:"github_repo"`
+		GitHubReleaseSyncEvery time.Duration `yaml:"github_release_sync_interval"`
 	} `yaml:"agent"`
 
 	Relay struct {
@@ -117,6 +126,10 @@ type Secrets struct {
 	// resolved the same way so the trusted key is provisioned explicitly
 	// rather than hardcoded.
 	ReleasePublicKey []byte
+	// GitHubToken is optional — only needed to raise the unauthenticated
+	// GitHub API rate limit or to sync releases from a private repo. Sync
+	// works fine without it for a public repo at normal usage volumes.
+	GitHubToken string
 }
 
 // Default returns the documented safe defaults from docs/CONFIGURATION.md §1.
@@ -137,6 +150,11 @@ func Default() ServerConfig {
 	c.Agent.NetworkUploadInterval = 5 * time.Minute
 	c.Agent.EnrollmentTTL = 30 * time.Minute
 	c.Agent.ReconnectMaxBackoff = 5 * time.Minute
+	c.Agent.GitHubRepo = "mrder/wartungsremote"
+	// Disabled by default — this reaches out to the internet on its own
+	// initiative, which should be an explicit opt-in (github_release_sync_interval
+	// in server.yaml) rather than a silent behavior change on upgrade.
+	c.Agent.GitHubReleaseSyncEvery = 0
 	c.Relay.TicketTTL = 60 * time.Second
 	c.Relay.MaxTunnelsPerUser = 5
 	c.Relay.MaxTunnelsPerDevice = 3
@@ -267,6 +285,12 @@ func loadSecrets() (Secrets, error) {
 		return s, err
 	}
 	s.ReleasePublicKey = releaseKey
+
+	githubToken, err := readSecretFile("WR_GITHUB_TOKEN_FILE")
+	if err != nil {
+		return s, err
+	}
+	s.GitHubToken = string(githubToken)
 
 	return s, nil
 }

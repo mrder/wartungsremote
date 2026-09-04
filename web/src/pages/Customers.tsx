@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { CustomerApi, ApiError, type Customer, type Group } from '../api'
 import { useAuth } from '../AuthContext'
 
 export default function Customers() {
+  const { t } = useTranslation()
   const { user } = useAuth()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [groups, setGroups] = useState<Group[]>([])
@@ -20,7 +21,7 @@ export default function Customers() {
     try {
       setCustomers((await CustomerApi.list()) ?? [])
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load customers')
+      setError(err instanceof ApiError ? err.message : t('customers.loadFailed'))
     }
   }
 
@@ -28,13 +29,14 @@ export default function Customers() {
     try {
       setGroups((await CustomerApi.groups()) ?? [])
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load groups')
+      setError(err instanceof ApiError ? err.message : t('customers.loadGroupsFailed'))
     }
   }
 
   useEffect(() => {
     load()
     loadGroups()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function create(e: React.FormEvent) {
@@ -46,7 +48,7 @@ export default function Customers() {
       setNumber('')
       load()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to create customer')
+      setError(err instanceof ApiError ? err.message : t('customers.createFailed'))
     }
   }
 
@@ -59,7 +61,7 @@ export default function Customers() {
       setGroupCustomerId('')
       loadGroups()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to create group')
+      setError(err instanceof ApiError ? err.message : t('customers.createGroupFailed'))
     }
   }
 
@@ -70,7 +72,7 @@ export default function Customers() {
       setRenamingId('')
       loadGroups()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to rename group')
+      setError(err instanceof ApiError ? err.message : t('customers.renameGroupFailed'))
     }
   }
 
@@ -79,31 +81,31 @@ export default function Customers() {
       await CustomerApi.deleteGroup(id)
       loadGroups()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to delete group')
+      setError(err instanceof ApiError ? err.message : t('customers.deleteGroupFailed'))
     }
   }
 
   function customerName(id: string | null) {
-    if (!id) return '- global -'
+    if (!id) return t('customers.global')
     return customers.find((c) => c.ID === id)?.Name ?? id
   }
 
   return (
-    <div className="page">
-      <Link to="/">&larr; Back to devices</Link>
-      <h1>Customers</h1>
+    <>
+      <h1>{t('customers.title')}</h1>
+      <p>{t('customers.intro')}</p>
       {error && <p className="error">{error}</p>}
 
       {canManage && (
         <form onSubmit={create} className="toolbar">
-          <input placeholder="Customer name" value={name} onChange={(e) => setName(e.target.value)} required />
-          <input placeholder="Customer number" value={number} onChange={(e) => setNumber(e.target.value)} />
-          <button type="submit">+ Add Customer</button>
+          <input placeholder={t('customers.customerName')} value={name} onChange={(e) => setName(e.target.value)} required />
+          <input placeholder={t('customers.customerNumber')} value={number} onChange={(e) => setNumber(e.target.value)} />
+          <button type="submit">{t('customers.addCustomer')}</button>
         </form>
       )}
 
       <table className="device-table">
-        <thead><tr><th>Name</th><th>Number</th><th>Status</th></tr></thead>
+        <thead><tr><th>{t('deviceList.name')}</th><th>{t('customers.number')}</th><th>{t('deviceList.status')}</th></tr></thead>
         <tbody>
           {customers.map((c) => (
             <tr key={c.ID}>
@@ -112,17 +114,14 @@ export default function Customers() {
               <td>{c.Status}</td>
             </tr>
           ))}
-          {customers.length === 0 && <tr><td colSpan={3}>No customers yet.</td></tr>}
+          {customers.length === 0 && <tr><td colSpan={3}>{t('customers.noCustomers')}</td></tr>}
         </tbody>
       </table>
 
-      <h3>Groups</h3>
-      <p>
-        Devices and alert rules can be scoped to a group instead of (or within) a customer — assign a device
-        to one from its Overview tab. A group left without a customer applies across all customers.
-      </p>
+      <h3>{t('customers.groups')}</h3>
+      <p>{t('customers.groupsHint')}</p>
       <table className="device-table">
-        <thead><tr><th>Name</th><th>Customer</th><th></th></tr></thead>
+        <thead><tr><th>{t('deviceList.name')}</th><th>{t('customers.title')}</th><th></th></tr></thead>
         <tbody>
           {groups.map((g) => (
             <tr key={g.ID}>
@@ -138,33 +137,33 @@ export default function Customers() {
                 {canManage && (
                   renamingId === g.ID ? (
                     <>
-                      <button onClick={() => saveRename(g.ID)}>Save</button>
-                      <button onClick={() => setRenamingId('')}>Cancel</button>
+                      <button onClick={() => saveRename(g.ID)}>{t('common.save')}</button>
+                      <button onClick={() => setRenamingId('')}>{t('common.cancel')}</button>
                     </>
                   ) : (
                     <>
-                      <button onClick={() => { setRenamingId(g.ID); setRenameValue(g.Name) }}>Rename</button>
-                      <button onClick={() => deleteGroup(g.ID)}>Delete</button>
+                      <button onClick={() => { setRenamingId(g.ID); setRenameValue(g.Name) }}>{t('customers.rename')}</button>
+                      <button onClick={() => deleteGroup(g.ID)}>{t('common.delete')}</button>
                     </>
                   )
                 )}
               </td>
             </tr>
           ))}
-          {groups.length === 0 && <tr><td colSpan={3}>No groups yet.</td></tr>}
+          {groups.length === 0 && <tr><td colSpan={3}>{t('customers.noGroups')}</td></tr>}
         </tbody>
       </table>
 
       {canManage && (
         <form onSubmit={createGroup} className="toolbar">
-          <input placeholder="Group name" value={groupName} onChange={(e) => setGroupName(e.target.value)} required />
+          <input placeholder={t('customers.groupName')} value={groupName} onChange={(e) => setGroupName(e.target.value)} required />
           <select value={groupCustomerId} onChange={(e) => setGroupCustomerId(e.target.value)}>
-            <option value="">- global (all customers) -</option>
+            <option value="">{t('customers.globalAllCustomers')}</option>
             {customers.map((c) => <option key={c.ID} value={c.ID}>{c.Name}</option>)}
           </select>
-          <button type="submit">+ Add Group</button>
+          <button type="submit">{t('customers.addGroup')}</button>
         </form>
       )}
-    </div>
+    </>
   )
 }

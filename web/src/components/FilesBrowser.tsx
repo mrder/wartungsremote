@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { FileApi, ApiError, type FileEntry } from '../api'
 
 function joinPath(base: string, name: string): string {
@@ -8,6 +9,7 @@ function joinPath(base: string, name: string): string {
 }
 
 export default function FilesBrowser({ deviceId, defaultPath }: { deviceId: string; defaultPath: string }) {
+  const { t } = useTranslation()
   const [path, setPath] = useState(defaultPath)
   const [entries, setEntries] = useState<FileEntry[]>([])
   const [error, setError] = useState('')
@@ -22,7 +24,7 @@ export default function FilesBrowser({ deviceId, defaultPath }: { deviceId: stri
       setEntries(list ?? [])
       setPath(p)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to list directory')
+      setError(err instanceof ApiError ? err.message : t('filesBrowser.listFailed'))
     } finally {
       setLoading(false)
     }
@@ -34,13 +36,13 @@ export default function FilesBrowser({ deviceId, defaultPath }: { deviceId: stri
   }, [])
 
   async function handleMkdir() {
-    const name = prompt('New folder name:')
+    const name = prompt(t('filesBrowser.newFolderName'))
     if (!name) return
     try {
       await FileApi.mkdir(deviceId, joinPath(path, name))
       load(path)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Create folder failed')
+      setError(err instanceof ApiError ? err.message : t('filesBrowser.createFolderFailed'))
     }
   }
 
@@ -51,7 +53,7 @@ export default function FilesBrowser({ deviceId, defaultPath }: { deviceId: stri
       await FileApi.upload(deviceId, joinPath(path, file.name), file)
       load(path)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Upload failed')
+      setError(err instanceof ApiError ? err.message : t('filesBrowser.uploadFailed'))
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
@@ -61,16 +63,16 @@ export default function FilesBrowser({ deviceId, defaultPath }: { deviceId: stri
     <div>
       <div className="toolbar">
         <input value={path} onChange={(e) => setPath(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load(path)} />
-        <button onClick={() => load(path)}>Go</button>
-        <button onClick={handleMkdir}>+ Folder</button>
+        <button onClick={() => load(path)}>{t('filesBrowser.go')}</button>
+        <button onClick={handleMkdir}>{t('filesBrowser.newFolder')}</button>
         <input ref={fileInputRef} type="file" onChange={handleUpload} style={{ maxWidth: 180 }} />
       </div>
       {error && <p className="error">{error}</p>}
       {loading ? (
-        <p>Loading...</p>
+        <p>{t('common.loading')}</p>
       ) : (
         <table className="device-table">
-          <thead><tr><th>Name</th><th>Size</th><th>Modified</th></tr></thead>
+          <thead><tr><th>{t('deviceList.name')}</th><th>{t('filesBrowser.size')}</th><th>{t('filesBrowser.modified')}</th></tr></thead>
           <tbody>
             {entries.map((e) => (
               <tr key={e.name}>
@@ -85,7 +87,7 @@ export default function FilesBrowser({ deviceId, defaultPath }: { deviceId: stri
                 <td>{new Date(e.mod_time_unix_ms).toLocaleString()}</td>
               </tr>
             ))}
-            {entries.length === 0 && <tr><td colSpan={3}>Empty directory.</td></tr>}
+            {entries.length === 0 && <tr><td colSpan={3}>{t('filesBrowser.emptyDirectory')}</td></tr>}
           </tbody>
         </table>
       )}

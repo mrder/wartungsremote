@@ -9,15 +9,15 @@ import Releases from './pages/Releases'
 import Users from './pages/Users'
 import Settings from './pages/Settings'
 import NetworkUsage from './pages/NetworkUsage'
-import Account from './pages/Account'
 import Help from './pages/Help'
 import AdvisoryBanner from './components/AdvisoryBanner'
+import Layout from './components/Layout'
 
 function RequireAuth({ children }: { children: React.ReactElement }) {
   const { user, loading } = useAuth()
   if (loading) return <div className="page">Loading...</div>
   if (!user) return <Navigate to="/login" replace />
-  return children
+  return <Layout>{children}</Layout>
 }
 
 function AppRoutes() {
@@ -31,7 +31,7 @@ function AppRoutes() {
       <Route path="/users" element={<RequireAuth><Users /></RequireAuth>} />
       <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
       <Route path="/network-usage" element={<RequireAuth><NetworkUsage /></RequireAuth>} />
-      <Route path="/account" element={<RequireAuth><Account /></RequireAuth>} />
+      <Route path="/account" element={<Navigate to="/settings" replace />} />
       <Route path="/help" element={<RequireAuth><Help /></RequireAuth>} />
       <Route path="/help/:slug" element={<RequireAuth><Help /></RequireAuth>} />
       <Route path="/devices/:id" element={<RequireAuth><DeviceDetail /></RequireAuth>} />
@@ -40,9 +40,14 @@ function AppRoutes() {
 }
 
 function Footer() {
+  const year = new Date().getFullYear()
   return (
     <footer className="app-footer">
-      Powered by <a href="https://sonnyathome.online" target="_blank" rel="noopener noreferrer">sonnyathome.online</a>
+      <span>&copy; {year} WartungsRemote</span>
+      <span className="app-footer-sep">&middot;</span>
+      <span>
+        Powered by <a href="https://sonnyathome.online" target="_blank" rel="noopener noreferrer">sonnyathome.online</a>
+      </span>
     </footer>
   )
 }
@@ -50,8 +55,10 @@ function Footer() {
 export default function App() {
   return (
     <AuthProvider>
-      <AdvisoryBanner />
-      <AppRoutes />
+      <div className="app-shell">
+        <AdvisoryBanner />
+        <AppRoutes />
+      </div>
       <Footer />
     </AuthProvider>
   )

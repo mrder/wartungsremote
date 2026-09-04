@@ -25,6 +25,11 @@ agent.yaml
 web/node_modules/
 web/dist/
 
+# .NET (Windows GUI installer build output)
+deployment/windows/installer/**/bin/
+deployment/windows/installer/**/obj/
+deployment/windows/installer/**/Payload/
+
 # Local throwaway dev database + dev-only secrets created during manual
 # verification (see README.md Quick start) — never real deployment data.
 .devdb/

@@ -77,6 +77,7 @@ const (
 	EventEnrollmentRevoked   = "enrollment.revoked"
 	EventDeviceUpdated       = "device.updated"
 	EventDeviceRevoked       = "device.revoked"
+	EventDeviceDeleted       = "device.deleted"
 	EventDeviceConnected     = "device.connected"
 	EventDeviceDisconnected  = "device.disconnected"
 	EventProtocolError       = "protocol.error"

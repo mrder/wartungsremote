@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { AlertApi } from '../api'
 
 export default function AlertsBadge() {
+  const { t } = useTranslation()
   const [count, setCount] = useState(0)
 
   useEffect(() => {
@@ -25,7 +27,7 @@ export default function AlertsBadge() {
 
   return (
     <Link to="/alerts" className="alerts-badge-link">
-      Alerts{count > 0 && <span className="alerts-badge-count">{count}</span>}
+      {t('nav.alerts')}{count > 0 && <span className="alerts-badge-count">{count}</span>}
     </Link>
   )
 }

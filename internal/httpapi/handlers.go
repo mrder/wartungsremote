@@ -46,6 +46,7 @@ type handlers struct {
 	customers      *customer.Repo
 	alerts         *alerting.Repo
 	releases       *agentrelease.Repo
+	githubSyncer   *agentrelease.GitHubSyncer
 	settings       *appsettings.Repo
 	support        *support.Repo
 	telegram       *notify.TelegramRepo

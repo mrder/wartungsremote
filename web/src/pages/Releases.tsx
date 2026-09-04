@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Trans, useTranslation } from 'react-i18next'
 import { ReleaseApi, ApiError, type AgentRelease } from '../api'
 import { useAuth } from '../AuthContext'
 
 export default function Releases() {
+  const { t } = useTranslation()
   const { user } = useAuth()
   const canManage = user?.permissions.includes('agent.update')
   const [releases, setReleases] = useState<AgentRelease[]>([])
@@ -17,16 +18,20 @@ export default function Releases() {
   const [sha256, setSha256] = useState('')
   const [signature, setSignature] = useState('')
 
+  const [syncBusy, setSyncBusy] = useState(false)
+  const [syncResult, setSyncResult] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null)
+
   async function load() {
     try {
       setReleases((await ReleaseApi.list()) ?? [])
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load releases')
+      setError(err instanceof ApiError ? err.message : t('releases.loadFailed'))
     }
   }
 
   useEffect(() => {
     load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function create(e: React.FormEvent) {
@@ -39,7 +44,21 @@ export default function Releases() {
       setVersion(''); setArtifactURL(''); setSha256(''); setSignature('')
       load()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to create release')
+      setError(err instanceof ApiError ? err.message : t('releases.createFailed'))
+    }
+  }
+
+  async function syncFromGitHub() {
+    setError('')
+    setSyncResult(null)
+    setSyncBusy(true)
+    try {
+      setSyncResult(await ReleaseApi.syncFromGitHub())
+      load()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t('releases.syncFailed'))
+    } finally {
+      setSyncBusy(false)
     }
   }
 
@@ -48,23 +67,39 @@ export default function Releases() {
       await ReleaseApi.setBlocked(id, blocked)
       load()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to update release')
+      setError(err instanceof ApiError ? err.message : t('releases.updateFailed'))
     }
   }
 
   return (
-    <div className="page">
-      <Link to="/">&larr; Back to devices</Link>
-      <h1>Agent Releases</h1>
+    <>
+      <h1>{t('releases.title')}</h1>
       <p>
-        Release artifacts are signed offline with <code>wr-release-sign</code> — this server never holds a
-        production signing key. Submissions are verified against the configured trusted public key
-        (<code>WR_RELEASE_PUBLIC_KEY_FILE</code>) before being accepted.
+        <Trans i18nKey="releases.hint"><code>wr-release-sign</code><code>WR_RELEASE_PUBLIC_KEY_FILE</code></Trans>
       </p>
       {error && <p className="error">{error}</p>}
 
+      {canManage && (
+        <>
+          <div className="toolbar">
+            <button onClick={syncFromGitHub} disabled={syncBusy}>{syncBusy ? t('common.loading') : t('releases.syncFromGitHub')}</button>
+          </div>
+          {syncResult && (
+            <p>
+              {t('releases.syncResult', { imported: syncResult.imported, skipped: syncResult.skipped })}
+              {syncResult.errors.length > 0 && (
+                <>
+                  <br />
+                  {syncResult.errors.join('; ')}
+                </>
+              )}
+            </p>
+          )}
+        </>
+      )}
+
       <table className="device-table">
-        <thead><tr><th>Version</th><th>OS</th><th>Arch</th><th>Channel</th><th>Published</th><th>Min. supported</th><th>Blocked</th><th></th></tr></thead>
+        <thead><tr><th>{t('releases.version')}</th><th>{t('deviceList.os')}</th><th>{t('releases.arch')}</th><th>{t('releases.channel')}</th><th>{t('releases.published')}</th><th>{t('releases.minSupported')}</th><th>{t('releases.blocked')}</th><th></th></tr></thead>
         <tbody>
           {releases.map((r) => (
             <tr key={r.ID}>
@@ -73,40 +108,65 @@ export default function Releases() {
               <td>{r.Architecture}</td>
               <td>{r.Channel}</td>
               <td>{new Date(r.PublishedAt).toLocaleString()}</td>
-              <td>{r.MinimumSupported ? 'yes' : 'no'}</td>
-              <td>{r.Blocked ? 'yes' : 'no'}</td>
+              <td>{r.MinimumSupported ? t('common.yes') : t('common.no')}</td>
+              <td>{r.Blocked ? t('common.yes') : t('common.no')}</td>
               <td>
                 {canManage && (
-                  <button onClick={() => toggleBlocked(r.ID, !r.Blocked)}>{r.Blocked ? 'Unblock' : 'Block'}</button>
+                  <button onClick={() => toggleBlocked(r.ID, !r.Blocked)}>{r.Blocked ? t('releases.unblock') : t('releases.block')}</button>
                 )}
               </td>
             </tr>
           ))}
-          {releases.length === 0 && <tr><td colSpan={8}>No releases published yet.</td></tr>}
+          {releases.length === 0 && <tr><td colSpan={8}>{t('releases.noReleases')}</td></tr>}
         </tbody>
       </table>
 
       {canManage && (
-        <form onSubmit={create} className="toolbar" style={{ flexWrap: 'wrap' }}>
-          <input placeholder="Version (e.g. 0.2.0)" value={version} onChange={(e) => setVersion(e.target.value)} required />
-          <select value={osFamily} onChange={(e) => setOsFamily(e.target.value)}>
-            <option value="windows">windows</option>
-            <option value="linux">linux</option>
-          </select>
-          <select value={architecture} onChange={(e) => setArchitecture(e.target.value)}>
-            <option value="amd64">amd64</option>
-            <option value="arm64">arm64</option>
-          </select>
-          <select value={channel} onChange={(e) => setChannel(e.target.value)}>
-            <option value="stable">stable</option>
-            <option value="beta">beta</option>
-          </select>
-          <input placeholder="Artifact URL" value={artifactURL} onChange={(e) => setArtifactURL(e.target.value)} required style={{ minWidth: 260 }} />
-          <input placeholder="SHA-256 (hex)" value={sha256} onChange={(e) => setSha256(e.target.value)} required style={{ minWidth: 260 }} />
-          <input placeholder="Signature (base64)" value={signature} onChange={(e) => setSignature(e.target.value)} required style={{ minWidth: 260 }} />
-          <button type="submit">+ Publish release</button>
-        </form>
+        <>
+          <h3>{t('releases.manualTitle')}</h3>
+          <p>{t('releases.manualHint')}</p>
+          <form onSubmit={create} className="field-form">
+            <label>
+              {t('releases.version')}
+              <input placeholder={t('releases.versionPlaceholder')} value={version} onChange={(e) => setVersion(e.target.value)} required style={{ width: '8rem' }} />
+            </label>
+            <label>
+              {t('deviceList.os')}
+              <select value={osFamily} onChange={(e) => setOsFamily(e.target.value)}>
+                <option value="windows">windows</option>
+                <option value="linux">linux</option>
+              </select>
+            </label>
+            <label>
+              {t('releases.arch')}
+              <select value={architecture} onChange={(e) => setArchitecture(e.target.value)}>
+                <option value="amd64">amd64</option>
+                <option value="arm64">arm64</option>
+              </select>
+            </label>
+            <label>
+              {t('releases.channel')}
+              <select value={channel} onChange={(e) => setChannel(e.target.value)}>
+                <option value="stable">stable</option>
+                <option value="beta">beta</option>
+              </select>
+            </label>
+            <label style={{ flex: '1 1 260px' }}>
+              {t('releases.artifactUrl')}
+              <input value={artifactURL} onChange={(e) => setArtifactURL(e.target.value)} required />
+            </label>
+            <label style={{ flex: '1 1 260px' }}>
+              {t('releases.sha256')}
+              <input value={sha256} onChange={(e) => setSha256(e.target.value)} required />
+            </label>
+            <label style={{ flex: '1 1 260px' }}>
+              {t('releases.signature')}
+              <input value={signature} onChange={(e) => setSignature(e.target.value)} required />
+            </label>
+            <button type="submit">{t('releases.publish')}</button>
+          </form>
+        </>
       )}
-    </div>
+    </>
   )
 }

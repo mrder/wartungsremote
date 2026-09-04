@@ -46,7 +46,7 @@ New-RandomSecretFile (Join-Path $secretsDir "session_pepper") 32
 New-RandomSecretFile (Join-Path $secretsDir "totp_key") 32
 
 icacls "$env:ProgramData\WartungsRemoteCore" /inheritance:r | Out-Null
-icacls "$env:ProgramData\WartungsRemoteCore" /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" | Out-Null
+icacls "$env:ProgramData\WartungsRemoteCore" /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" | Out-Null
 
 # Secret file paths are baked into the service's own command line at install
 # time (see cmd/wr-core --database-url-file etc.), not set as machine

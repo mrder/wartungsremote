@@ -29,6 +29,42 @@ Windows Vorschlag:
 
 Secrets niemals world-readable.
 
+## 2.1 Windows-Installation
+
+Zwei Wege, beide installieren denselben `wartungsremote-agent`-Dienst:
+
+1. **PowerShell-Einzeiler** (siehe „+ Gerät hinzufügen" im Dashboard) —
+   lädt `scripts/quickinstall-agent-windows.ps1` und die passende
+   `agent-*`-GitHub-Release herunter. Der generierte Befehl ruft sich
+   selbst über `powershell -ExecutionPolicy Bypass -File ...` auf, damit
+   die auf vielen Windows-Rechnern standardmäßig aktive
+   `Restricted`-Execution-Policy nicht dazwischenfunkt.
+2. **Grafischer Installer** (`deployment/windows/installer/`) — ein
+   einzelnes, in sich geschlossenes `WartungsRemoteAgentSetup.exe`
+   (self-contained .NET/WinForms, ~60 MB, kein Internetzugriff auf dem
+   Zielrechner nötig). Fragt Server-URL und Enrollment-Token in einem
+   Fenster ab, fordert per Anwendungsmanifest automatisch UAC-Admin-
+   Rechte an (kein Execution-Policy-Problem, da kein Skript) und
+   installiert/startet den Dienst identisch zu
+   `deployment/windows/install-agent.ps1`. Erkennt eine bestehende
+   Installation und macht vor dem Überschreiben einen sauberen
+   Stop/Uninstall (Upgrade-Fall).
+
+   Bauen: `deployment/windows/installer/build-installer.ps1` (Go +
+   .NET SDK nötig) — baut `wr-agent.exe` frisch, bettet es in den
+   Installer ein und legt das Ergebnis in `dist/WartungsRemoteAgentSetup.exe`
+   ab. Diese Datei kann 1:1 an Kunden/Techniker weitergegeben werden;
+   Server-URL und Token werden erst beim Ausführen vor Ort eingegeben,
+   der Installer selbst muss dafür nicht neu gebaut werden.
+
+Beide Wege setzen NTFS-Berechtigungen auf `%ProgramData%\WartungsRemote`
+über die sprachunabhängigen Well-Known-SIDs (`*S-1-5-18` für SYSTEM,
+`*S-1-5-32-544` für die lokale Administrators-Gruppe) statt über die
+lokalisierten Gruppennamen — auf nicht-englischen Windows-Installationen
+(z. B. Deutsch: „Administratoren") würde `icacls` sonst die
+Namensauflösung für die Berechtigungsvergabe stillschweigend
+überspringen.
+
 ## 3. Konfiguration
 
 Nicht-sensitive Konfiguration:

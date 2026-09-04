@@ -26,6 +26,8 @@ agent:
   network_upload_interval: 5m
   enrollment_ttl: 30m
   reconnect_max_backoff: 5m
+  github_repo: mrder/wartungsremote
+  github_release_sync_interval: 0   # 0 = disabled (default); e.g. 1h to enable
 
 relay:
   ticket_ttl: 60s
@@ -69,6 +71,19 @@ Tabelle, andere Aufnahmerate als CPU/RAM/Disk) und sind zusätzlich über
 das Dashboard (Settings) zur Laufzeit überschreibbar, genau wie
 `metrics.raw_retention`/`hourly_retention`.
 
+`agent.github_release_sync_interval` (0 = deaktiviert, Standard) lässt den
+Server periodisch `agent-*`-GitHub-Releases von `agent.github_repo`
+importieren, statt jeden Release manuell im Dashboard einzutragen. Jeder
+Import durchläuft trotzdem dieselbe Ed25519-Signaturprüfung wie das manuelle
+Formular (`agentrelease.Repo.Create` gegen `WR_RELEASE_PUBLIC_KEY_FILE`) —
+GitHub liefert nur den Transport, nie das Vertrauen. Erwartet pro
+Binary-Asset (z. B. `wr-agent-windows-amd64.exe`) zwei Begleit-Assets im
+selben Release: `<name>.sha256` (reiner Hex-Hash) und `<name>.sig`
+(Base64-Signatur) — `wr-release-sign -sign` schreibt beide Dateien
+inzwischen automatisch neben seiner gewohnten stdout-Ausgabe; alle drei
+zusammen als Release-Assets hochladen. Manuelles Eintragen über das
+Dashboard-Formular bleibt unabhängig davon möglich.
+
 ## 2. Umgebungsvariablen / Secrets
 
 Beispielnamen:
@@ -78,6 +93,8 @@ WR_DATABASE_URL_FILE
 WR_SESSION_PEPPER_FILE
 WR_TOTP_ENCRYPTION_KEY_FILE
 WR_INTERNAL_SERVICE_KEY_FILE
+WR_RELEASE_PUBLIC_KEY_FILE      # optional — required only to accept releases (manual or GitHub sync)
+WR_GITHUB_TOKEN_FILE            # optional — raises the GitHub API rate limit / needed for a private repo
 ```
 
 Nicht unterstützen:

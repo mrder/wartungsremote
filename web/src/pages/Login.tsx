@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import QRCode from 'qrcode'
 import { AuthApi, ApiError } from '../api'
 import { useAuth } from '../AuthContext'
@@ -7,8 +8,11 @@ import { useAuth } from '../AuthContext'
 type Stage = 'credentials' | 'mfa' | 'mfa_setup'
 
 export default function Login() {
+  const { t } = useTranslation()
   const { refresh } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const loggedOutForInactivity = (location.state as { reason?: string } | null)?.reason === 'inactivity'
 
   const [stage, setStage] = useState<Stage>('credentials')
   const [username, setUsername] = useState('')
@@ -37,7 +41,7 @@ export default function Login() {
         navigate('/')
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Login failed')
+      setError(err instanceof ApiError ? err.message : t('login.loginFailed'))
     } finally {
       setBusy(false)
     }
@@ -54,7 +58,7 @@ export default function Login() {
         navigate('/')
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Invalid code')
+      setError(err instanceof ApiError ? err.message : t('login.invalidCode'))
     } finally {
       setBusy(false)
     }
@@ -68,7 +72,7 @@ export default function Login() {
       const res = await AuthApi.confirmMfaSetup(username, password, code)
       setRecoveryCodes(res.recovery_codes)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Invalid code')
+      setError(err instanceof ApiError ? err.message : t('login.invalidCode'))
     } finally {
       setBusy(false)
     }
@@ -77,10 +81,10 @@ export default function Login() {
   if (recoveryCodes) {
     return (
       <div className="auth-card">
-        <h1>Save your recovery codes</h1>
-        <p>These are shown only once. Store them somewhere safe.</p>
+        <h1>{t('login.saveRecoveryCodes')}</h1>
+        <p>{t('login.recoveryCodesHint')}</p>
         <pre className="recovery-codes">{recoveryCodes.join('\n')}</pre>
-        <button onClick={async () => { await refresh(); navigate('/') }}>Continue</button>
+        <button onClick={async () => { await refresh(); navigate('/') }}>{t('common.continue')}</button>
       </div>
     )
   }
@@ -88,29 +92,30 @@ export default function Login() {
   return (
     <div className="auth-card">
       <h1>WartungsRemote</h1>
+      {loggedOutForInactivity && <p>{t('login.loggedOutForInactivity')}</p>}
       {stage === 'credentials' && (
         <form onSubmit={handleCredentials}>
-          <label>Username<input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus required /></label>
-          <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
+          <label>{t('login.username')}<input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus required /></label>
+          <label>{t('login.password')}<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
           {error && <p className="error">{error}</p>}
-          <button disabled={busy} type="submit">Login</button>
+          <button disabled={busy} type="submit">{t('login.login')}</button>
         </form>
       )}
       {stage === 'mfa' && (
         <form onSubmit={handleMfa}>
-          <p>Enter your 6-digit authenticator code.</p>
-          <label>Code<input value={code} onChange={(e) => setCode(e.target.value)} autoFocus required maxLength={6} /></label>
+          <p>{t('login.enterCode')}</p>
+          <label>{t('login.code')}<input value={code} onChange={(e) => setCode(e.target.value)} autoFocus required maxLength={6} /></label>
           {error && <p className="error">{error}</p>}
-          <button disabled={busy} type="submit">Verify</button>
+          <button disabled={busy} type="submit">{t('login.verify')}</button>
         </form>
       )}
       {stage === 'mfa_setup' && (
         <form onSubmit={handleMfaSetup}>
-          <p>Two-factor authentication setup is required. Scan this QR code with your authenticator app, then enter a code to confirm.</p>
-          {qrDataUrl && <img src={qrDataUrl} alt="TOTP setup QR code" width={200} height={200} />}
-          <label>Code<input value={code} onChange={(e) => setCode(e.target.value)} required maxLength={6} /></label>
+          <p>{t('login.mfaSetupHint')}</p>
+          {qrDataUrl && <img src={qrDataUrl} alt={t('login.qrAlt')} width={200} height={200} />}
+          <label>{t('login.code')}<input value={code} onChange={(e) => setCode(e.target.value)} required maxLength={6} /></label>
           {error && <p className="error">{error}</p>}
-          <button disabled={busy} type="submit">Confirm</button>
+          <button disabled={busy} type="submit">{t('login.confirm')}</button>
         </form>
       )}
     </div>

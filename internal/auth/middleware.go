@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 )
 
@@ -23,16 +24,19 @@ func RequireSession(svc *Service) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token, err := svc.Sessions.ReadCookie(r)
 			if err != nil {
+				slog.Warn("session rejected: no session cookie", "path", r.URL.Path, "remote_addr", r.RemoteAddr)
 				writeError(w, http.StatusUnauthorized, "unauthenticated", "No active session")
 				return
 			}
 			sess, err := svc.Sessions.Validate(r.Context(), token)
 			if err != nil {
+				slog.Warn("session rejected: invalid or expired", "path", r.URL.Path, "remote_addr", r.RemoteAddr, "reason", err)
 				writeError(w, http.StatusUnauthorized, "unauthenticated", "Session invalid or expired")
 				return
 			}
 			user, err := svc.Repo.GetByID(r.Context(), sess.UserID)
 			if err != nil || user.Status != UserActive {
+				slog.Warn("session rejected: user inactive or lookup failed", "path", r.URL.Path, "user_id", sess.UserID, "error", err)
 				writeError(w, http.StatusUnauthorized, "unauthenticated", "Session invalid or expired")
 				return
 			}

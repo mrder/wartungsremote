@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { DeviceApi, EnrollmentApi, ApiError, type Device, type OutstandingEnrollment } from '../api'
 import { useAuth } from '../AuthContext'
 import StatusBadge from '../components/StatusBadge'
-import AlertsBadge from '../components/AlertsBadge'
 
 export default function DeviceList() {
-  const { user, logout } = useAuth()
+  const { t } = useTranslation()
+  const { user } = useAuth()
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -20,6 +21,7 @@ export default function DeviceList() {
   const [reusable, setReusable] = useState(false)
   const [outstanding, setOutstanding] = useState<OutstandingEnrollment[]>([])
   const [showOutstanding, setShowOutstanding] = useState(false)
+  const [showRevoked, setShowRevoked] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -29,7 +31,7 @@ export default function DeviceList() {
       if (query) params.q = query
       setDevices((await DeviceApi.list(params)) ?? [])
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load devices')
+      setError(err instanceof ApiError ? err.message : t('deviceList.loadFailed'))
     } finally {
       setLoading(false)
     }
@@ -51,7 +53,7 @@ export default function DeviceList() {
       setEnrollment(created)
       loadOutstanding()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to create enrollment token')
+      setError(err instanceof ApiError ? err.message : t('deviceList.createEnrollmentFailed'))
     } finally {
       setEnrollBusy(false)
     }
@@ -61,7 +63,7 @@ export default function DeviceList() {
     try {
       setOutstanding((await EnrollmentApi.list()) ?? [])
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load enrollment tokens')
+      setError(err instanceof ApiError ? err.message : t('deviceList.loadTokensFailed'))
     }
   }
 
@@ -70,7 +72,7 @@ export default function DeviceList() {
       await EnrollmentApi.revoke(id)
       loadOutstanding()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to revoke enrollment token')
+      setError(err instanceof ApiError ? err.message : t('deviceList.revokeTokenFailed'))
     }
   }
 
@@ -81,9 +83,9 @@ export default function DeviceList() {
       return `curl -fsSL https://raw.githubusercontent.com/${repo}/main/scripts/quickinstall-agent-linux.sh | sudo bash -s -- --server-url ${serverUrl} --token ${token} --channel ${channel}`
     }
     return [
-      `$s = New-TemporaryFile`,
+      `$s = New-TemporaryFile | Rename-Item -NewName { $_.Name + ".ps1" } -PassThru`,
       `Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/${repo}/main/scripts/quickinstall-agent-windows.ps1" -OutFile $s`,
-      `& $s -ServerUrl "${serverUrl}" -Token "${token}" -Channel "${channel}"`,
+      `powershell -ExecutionPolicy Bypass -File $s -ServerUrl "${serverUrl}" -Token "${token}" -Channel "${channel}"`,
     ].join('\n')
   }
 
@@ -101,10 +103,10 @@ export default function DeviceList() {
   async function revokeAllEnrollments() {
     try {
       const res = await EnrollmentApi.revokeAll()
-      setRevokeMsg(`Revoked ${res.revoked_count} outstanding enrollment token(s).`)
+      setRevokeMsg(t('deviceList.revokedAll', { count: res.revoked_count }))
       loadOutstanding()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to revoke enrollment tokens')
+      setError(err instanceof ApiError ? err.message : t('deviceList.revokeAllFailed'))
     }
   }
 
@@ -114,66 +116,55 @@ export default function DeviceList() {
     warning: devices.filter((d) => d.health === 'warning').length,
     critical: devices.filter((d) => d.health === 'critical').length,
   }
+  const visibleDevices = showRevoked ? devices : devices.filter((d) => d.status !== 'revoked')
+  const revokedCount = devices.filter((d) => d.status === 'revoked').length
 
   return (
-    <div className="page">
-      <header className="topbar">
-        <h1>WartungsRemote</h1>
-        <div>
-          <Link to="/customers">Customers</Link>
-          {user?.permissions.includes('monitoring.read') && <Link to="/network-usage">Network usage</Link>}
-          {user?.permissions.includes('agent.update') && <Link to="/releases">Releases</Link>}
-          {user?.permissions.includes('user.manage') && <Link to="/users">Users</Link>}
-          {user?.permissions.includes('system.settings') && <Link to="/settings">Settings</Link>}
-          <Link to="/help">Help</Link>
-          <AlertsBadge />
-          <Link to="/account">{user?.username}</Link>
-          <button onClick={logout}>Logout</button>
-        </div>
-      </header>
-
+    <>
+      <h1>{t('deviceList.title')}</h1>
+      <p>{t('deviceList.intro')}</p>
       <div className="stat-row">
-        <div className="stat">Online<strong>{counts.online}</strong></div>
-        <div className="stat">Offline<strong>{counts.offline}</strong></div>
-        <div className="stat warn">Warning<strong>{counts.warning}</strong></div>
-        <div className="stat crit">Critical<strong>{counts.critical}</strong></div>
+        <div className="stat">{t('deviceList.online')}<strong>{counts.online}</strong></div>
+        <div className="stat">{t('deviceList.offline')}<strong>{counts.offline}</strong></div>
+        <div className="stat warn">{t('deviceList.warning')}<strong>{counts.warning}</strong></div>
+        <div className="stat crit">{t('deviceList.critical')}<strong>{counts.critical}</strong></div>
       </div>
 
       <div className="toolbar">
-        <input placeholder="Search devices..." value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load()} />
-        <button onClick={load}>Search</button>
+        <input placeholder={t('deviceList.searchPlaceholder')} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load()} />
+        <button onClick={load}>{t('common.search')}</button>
         {user?.permissions.includes('enrollment.create') && (
           <>
             <label>
               <input type="checkbox" checked={reusable} onChange={(e) => setReusable(e.target.checked)} />
-              {' '}Reusable (site) token
+              {' '}{t('deviceList.reusableToken')}
             </label>
-            <button onClick={createEnrollment} disabled={enrollBusy}>+ Add Device</button>
+            <button onClick={createEnrollment} disabled={enrollBusy}>{t('deviceList.addDevice')}</button>
             <button onClick={() => { setShowOutstanding(!showOutstanding); if (!showOutstanding) loadOutstanding() }}>
-              {showOutstanding ? 'Hide' : 'Show'} outstanding tokens
+              {showOutstanding ? t('deviceList.hideOutstanding') : t('deviceList.showOutstanding')}
             </button>
           </>
         )}
         {user?.permissions.includes('credential.revoke') && (
-          <button onClick={revokeAllEnrollments}>Revoke all enrollment tokens</button>
+          <button onClick={revokeAllEnrollments}>{t('deviceList.revokeAllTokens')}</button>
         )}
       </div>
       {revokeMsg && <p>{revokeMsg}</p>}
 
       {showOutstanding && (
         <table className="device-table">
-          <thead><tr><th>Type</th><th>Uses</th><th>Last used</th><th>Expires</th><th></th></tr></thead>
+          <thead><tr><th>{t('deviceList.type')}</th><th>{t('deviceList.uses')}</th><th>{t('deviceList.lastUsed')}</th><th>{t('deviceList.expires')}</th><th></th></tr></thead>
           <tbody>
-            {outstanding.map((t) => (
-              <tr key={t.ID}>
-                <td>{t.IsReusable ? 'Reusable' : 'Single-use'}</td>
-                <td>{t.UseCount}</td>
-                <td>{t.LastUsedAt ? new Date(t.LastUsedAt).toLocaleString() : '-'}</td>
-                <td>{new Date(t.ExpiresAt).toLocaleString()}</td>
-                <td><button onClick={() => revokeOne(t.ID)}>Revoke</button></td>
+            {outstanding.map((tok) => (
+              <tr key={tok.ID}>
+                <td>{tok.IsReusable ? t('deviceList.reusable') : t('deviceList.singleUse')}</td>
+                <td>{tok.UseCount}</td>
+                <td>{tok.LastUsedAt ? new Date(tok.LastUsedAt).toLocaleString() : '-'}</td>
+                <td>{new Date(tok.ExpiresAt).toLocaleString()}</td>
+                <td><button onClick={() => revokeOne(tok.ID)}>{t('common.revoke')}</button></td>
               </tr>
             ))}
-            {outstanding.length === 0 && <tr><td colSpan={5}>No outstanding enrollment tokens.</td></tr>}
+            {outstanding.length === 0 && <tr><td colSpan={5}>{t('deviceList.noOutstandingTokens')}</td></tr>}
           </tbody>
         </table>
       )}
@@ -181,38 +172,46 @@ export default function DeviceList() {
       {enrollment && (
         <div className="enrollment-panel">
           <p>
-            New {reusable ? 'reusable (site) ' : ''}enrollment token — shown once, expires{' '}
+            {reusable ? t('deviceList.newReusableToken') : t('deviceList.newToken')}{' '}
             {new Date(enrollment.expires_at).toLocaleString()}
-            {reusable ? ' — can install any number of devices until then' : ''}. Run this on the target device
-            (as Administrator/root) to install and enroll it in one step:
+            {reusable ? ` — ${t('deviceList.reusableUntilThen')}` : ''}. {t('deviceList.runOnTarget')}
           </p>
           <div className="toolbar" style={{ marginBottom: '0.5rem' }}>
             <button onClick={() => setInstallOS('linux')} disabled={installOS === 'linux'}>Linux</button>
             <button onClick={() => setInstallOS('windows')} disabled={installOS === 'windows'}>Windows</button>
-            <button onClick={() => setInstallChannel('stable')} disabled={installChannel === 'stable'}>Stable</button>
-            <button onClick={() => setInstallChannel('beta')} disabled={installChannel === 'beta'}>Beta</button>
-            <button onClick={copyInstallCommand}>{copied ? 'Copied!' : 'Copy command'}</button>
+            <button onClick={() => setInstallChannel('stable')} disabled={installChannel === 'stable'}>{t('deviceList.stable')}</button>
+            <button onClick={() => setInstallChannel('beta')} disabled={installChannel === 'beta'}>{t('deviceList.beta')}</button>
+            <button onClick={copyInstallCommand}>{copied ? t('deviceList.copied') : t('deviceList.copyCommand')}</button>
           </div>
           <code style={{ whiteSpace: 'pre-wrap', display: 'block' }}>{installCommand(installOS, installChannel, enrollment.token)}</code>
+          {installOS === 'windows' && (
+            <p style={{ marginTop: '0.5rem' }}>{t('deviceList.windowsInstallerHint')}</p>
+          )}
           <p style={{ marginTop: '0.75rem' }}>
-            Raw token, if you'd rather install manually: <code>{enrollment.token}</code>
+            {t('deviceList.rawToken')}: <code>{enrollment.token}</code>
           </p>
-          <button onClick={() => setEnrollment(null)}>Close</button>
+          <button onClick={() => setEnrollment(null)}>{t('common.close')}</button>
         </div>
       )}
 
       {error && <p className="error">{error}</p>}
+      {revokedCount > 0 && (
+        <label style={{ display: 'block', marginBottom: '0.5rem' }}>
+          <input type="checkbox" checked={showRevoked} onChange={(e) => setShowRevoked(e.target.checked)} />
+          {' '}{t('deviceList.showRevoked', { count: revokedCount })}
+        </label>
+      )}
       {loading ? (
-        <p>Loading...</p>
+        <p>{t('common.loading')}</p>
       ) : (
         <table className="device-table">
           <thead>
             <tr>
-              <th>Name</th><th>Hostname</th><th>OS</th><th>Status</th><th>Health</th><th>Last seen</th>
+              <th>{t('deviceList.name')}</th><th>{t('deviceList.hostname')}</th><th>{t('deviceList.os')}</th><th>{t('deviceList.status')}</th><th>{t('deviceList.health')}</th><th>{t('deviceList.lastSeen')}</th>
             </tr>
           </thead>
           <tbody>
-            {devices.map((d) => (
+            {visibleDevices.map((d) => (
               <tr key={d.id}>
                 <td><Link to={`/devices/${d.id}`}>{d.display_name}</Link></td>
                 <td>{d.hostname}</td>
@@ -222,12 +221,12 @@ export default function DeviceList() {
                 <td>{d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : '-'}</td>
               </tr>
             ))}
-            {devices.length === 0 && (
-              <tr><td colSpan={6}>No devices yet.</td></tr>
+            {visibleDevices.length === 0 && (
+              <tr><td colSpan={6}>{t('deviceList.noDevices')}</td></tr>
             )}
           </tbody>
         </table>
       )}
-    </div>
+    </>
   )
 }

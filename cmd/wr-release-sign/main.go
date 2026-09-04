@@ -78,8 +78,22 @@ func runSign(artifactPath, keyPath string) error {
 	}
 	sum := sha256.Sum256(data)
 	sig := ed25519.Sign(ed25519.PrivateKey(priv), sum[:])
+	sumHex := hex.EncodeToString(sum[:])
+	sigB64 := base64.StdEncoding.EncodeToString(sig)
 
-	fmt.Printf("artifact_sha256: %s\n", hex.EncodeToString(sum[:]))
-	fmt.Printf("signature:       %s\n", base64.StdEncoding.EncodeToString(sig))
+	fmt.Printf("artifact_sha256: %s\n", sumHex)
+	fmt.Printf("signature:       %s\n", sigB64)
+
+	// Sidecar files alongside the printed summary — upload both as GitHub
+	// Release assets next to the artifact itself so the server's optional
+	// GitHub release sync (internal/agentrelease.GitHubSyncer) can fetch and
+	// verify them without anyone hand-copying values into the dashboard.
+	if err := os.WriteFile(artifactPath+".sha256", []byte(sumHex), 0o644); err != nil {
+		return fmt.Errorf("write .sha256 sidecar: %w", err)
+	}
+	if err := os.WriteFile(artifactPath+".sig", []byte(sigB64), 0o644); err != nil {
+		return fmt.Errorf("write .sig sidecar: %w", err)
+	}
+	fmt.Printf("wrote %s.sha256 and %s.sig — upload both alongside the artifact as GitHub Release assets\n", artifactPath, artifactPath)
 	return nil
 }

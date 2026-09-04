@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { TunnelApi, SessionApi, ApiError, type TunnelCreated } from '../api'
 import { useAuth } from '../AuthContext'
 
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export default function TunnelPanel({ deviceId, osFamily }: Props) {
+  const { t } = useTranslation()
   const { user } = useAuth()
   const [tunnel, setTunnel] = useState<TunnelCreated | null>(null)
   const [kind, setKind] = useState<'ssh_local' | 'rdp_local' | null>(null)
@@ -26,7 +28,7 @@ export default function TunnelPanel({ deviceId, osFamily }: Props) {
       setTunnel(created)
       setKind(target)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to open tunnel')
+      setError(err instanceof ApiError ? err.message : t('tunnelPanel.openFailed'))
     } finally {
       setBusy(false)
     }
@@ -47,27 +49,31 @@ export default function TunnelPanel({ deviceId, osFamily }: Props) {
 
   return (
     <div className="tunnel-panel">
-      <h3>Native SSH / RDP access</h3>
+      <h3>{t('tunnelPanel.title')}</h3>
+      <p>{t('tunnelPanel.hint')}</p>
       {!tunnel && (
         <div className="toolbar">
-          {canSSH && <button disabled={busy} onClick={() => open('ssh_local')}>Open SSH Tunnel</button>}
-          {canRDP && osFamily === 'windows' && <button disabled={busy} onClick={() => open('rdp_local')}>Open RDP Tunnel</button>}
+          {canSSH && <button disabled={busy} onClick={() => open('ssh_local')}>{t('tunnelPanel.openSsh')}</button>}
+          {canRDP && osFamily === 'windows' && <button disabled={busy} onClick={() => open('rdp_local')}>{t('tunnelPanel.openRdp')}</button>}
         </div>
       )}
       {error && <p className="error">{error}</p>}
       {tunnel && (
         <div className="enrollment-panel">
           <p>
-            {kind === 'ssh_local' ? 'SSH' : 'RDP'} tunnel ready (ticket is single-use, expires{' '}
-            {new Date(tunnel.expires_at).toLocaleTimeString()}). Run this on your own machine:
+            {t('tunnelPanel.tunnelReady', {
+              kind: kind === 'ssh_local' ? 'SSH' : 'RDP',
+              time: new Date(tunnel.expires_at).toLocaleTimeString(),
+            })}
           </p>
           <code>{helperCmd}</code>
           <p>
-            Then point your {kind === 'ssh_local' ? 'ssh client' : 'RDP client (mstsc)'} at the loopback
-            port wr-helper prints — the existing {kind === 'ssh_local' ? 'SSH (22)' : 'RDP (3389)'} service
-            on the target is untouched.
+            {t('tunnelPanel.pointClient', {
+              client: kind === 'ssh_local' ? t('tunnelPanel.sshClient') : t('tunnelPanel.rdpClient'),
+              service: kind === 'ssh_local' ? 'SSH (22)' : 'RDP (3389)',
+            })}
           </p>
-          <button onClick={close}>Close Tunnel</button>
+          <button onClick={close}>{t('tunnelPanel.closeTunnel')}</button>
         </div>
       )}
     </div>

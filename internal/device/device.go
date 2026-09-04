@@ -613,6 +613,37 @@ func (r *Repo) Revoke(ctx context.Context, id uuid.UUID) error {
 	return tx.Commit(ctx)
 }
 
+// ErrHasHistory is returned by Delete when the target device has
+// connected at least once (last_seen_at is set) — hard-deletion is
+// deliberately restricted to devices that never actually came online
+// (e.g. an enrollment token was consumed but the agent never sent its
+// first heartbeat), so it can never be used to destroy a real device's
+// audit trail or metrics history. Use Revoke for anything that's ever
+// actually connected — it permanently blocks reconnection (install_id
+// stays taken) without erasing history.
+var ErrHasHistory = errors.New("device: has connection history, use Revoke instead of Delete")
+
+// Delete permanently removes a device row that has never connected.
+// Every other table referencing devices(id) cascades on delete except
+// enrollment_tokens.consumed_device_id, which is set NULL — the
+// consumed token record itself is left in place. The `last_seen_at IS
+// NULL` condition is enforced directly in the SQL (not just checked by
+// the caller beforehand) so a race with the device's first-ever connect
+// can't slip a real device through.
+func (r *Repo) Delete(ctx context.Context, id uuid.UUID) error {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM devices WHERE id=$1 AND last_seen_at IS NULL`, id)
+	if err != nil {
+		return fmt.Errorf("device: delete: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		if _, err := r.GetByID(ctx, id); err == nil {
+			return ErrHasHistory
+		}
+		return ErrNotFound
+	}
+	return nil
+}
+
 // UpdateTransportSecurity records whether the agent's most recent
 // handshake reported using wss:// — see protocol.HelloPayload.Secure.
 func (r *Repo) UpdateTransportSecurity(ctx context.Context, id uuid.UUID, secure bool) error {

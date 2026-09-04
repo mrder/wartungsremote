@@ -5,6 +5,9 @@ package httpapi
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -133,6 +136,14 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	releasesRepo := agentrelease.NewRepo(deps.Pool)
 	hub.SetVersionBlockedChecker(releasesRepo.IsVersionBlocked)
 
+	var githubSyncer *agentrelease.GitHubSyncer
+	if len(cfg.Secrets.ReleasePublicKey) == ed25519.PublicKeySize {
+		githubSyncer = agentrelease.NewGitHubSyncer(releasesRepo, cfg.Agent.GitHubRepo, cfg.Secrets.GitHubToken, ed25519.PublicKey(cfg.Secrets.ReleasePublicKey))
+		if cfg.Agent.GitHubReleaseSyncEvery > 0 {
+			go agentrelease.RunGitHubSyncSweeper(hubCtx, githubSyncer, cfg.Agent.GitHubReleaseSyncEvery)
+		}
+	}
+
 	supportRepo := support.NewRepo(deps.Pool, deps.Config.Secrets.TOTPEncryptionKey)
 	hub.SetSupportCredentialHandler(supportRepo.Upsert)
 	go support.RunRotationSweeper(hubCtx, supportRepo, settingsRepo, hub, time.Hour)
@@ -203,6 +214,7 @@ func NewRouter(deps Dependencies) (*Router, error) {
 		customers:      customers,
 		alerts:         alertsRepo,
 		releases:       releasesRepo,
+		githubSyncer:   githubSyncer,
 		settings:       settingsRepo,
 		support:        supportRepo,
 		telegram:       telegramRepo,
@@ -316,10 +328,12 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	protected.HandleFunc("GET /api/v1/agent/releases", h.handleListReleases)
 	protected.HandleFunc("POST /api/v1/agent/releases", h.handleCreateRelease)
 	protected.HandleFunc("PATCH /api/v1/agent/releases/{id}", h.handleSetReleaseBlocked)
+	protected.HandleFunc("POST /api/v1/agent/releases/sync", h.handleSyncGitHubReleases)
 	protected.HandleFunc("POST /api/v1/devices/{id}/update", h.handleTriggerDeviceUpdate)
 
 	protected.HandleFunc("POST /api/v1/enrollments/revoke-all", h.handleRevokeAllEnrollments)
 	protected.HandleFunc("GET /api/v1/users", h.handleListUsers)
+	protected.HandleFunc("POST /api/v1/users", h.handleCreateUser)
 	protected.HandleFunc("PATCH /api/v1/users/{id}", h.handleSetUserStatus)
 	protected.HandleFunc("POST /api/v1/users/{id}/revoke-sessions", h.handleRevokeUserSessions)
 
@@ -348,12 +362,13 @@ func (h *handlers) handleHealth(w http.ResponseWriter, r *http.Request) {
 // version, no framework fingerprint) — only the operator's own,
 // already-public brand, which reveals nothing an attacker couldn't
 // already see elsewhere (e.g. this dashboard's own footer).
-const deterrentHTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Nothing here</title>
-<style>
+// deterrentCSS is kept as its own constant (rather than inline in
+// deterrentHTML) because handleDeterrent needs its exact bytes to compute a
+// CSP style-src hash — the global security-headers middleware sets a strict
+// `default-src 'self'` with no 'unsafe-inline' (docs/SECURITY.md §15), which
+// silently strips this page's own <style> block unless this one response
+// explicitly allowlists it by hash.
+const deterrentCSS = `
   html, body { height:100%; margin:0; }
   body { background:#0b0e14; color:#c9d1d9; font-family:system-ui,-apple-system,Segoe UI,sans-serif;
          display:flex; align-items:center; justify-content:center; text-align:center; }
@@ -362,7 +377,14 @@ const deterrentHTML = `<!DOCTYPE html>
   p { color:#8b949e; line-height:1.5; }
   a { color:#58a6ff; text-decoration:none; }
   a:hover { text-decoration:underline; }
-</style>
+`
+
+var deterrentHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nothing here</title>
+<style>` + deterrentCSS + `</style>
 </head>
 <body>
   <div class="box">
@@ -373,7 +395,16 @@ const deterrentHTML = `<!DOCTYPE html>
 </body>
 </html>`
 
+var deterrentCSPStyleHash = func() string {
+	sum := sha256.Sum256([]byte(deterrentCSS))
+	return "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+}()
+
 func handleDeterrent(w http.ResponseWriter, r *http.Request) {
+	// Overrides the blanket CSP the security-headers middleware already set
+	// on this response — Header.Set replaces rather than appends, and
+	// headers aren't finalized until WriteHeader, so this still wins.
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src "+deterrentCSPStyleHash+"; frame-ancestors 'none'; base-uri 'none'")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusForbidden)
 	_, _ = w.Write([]byte(deterrentHTML))

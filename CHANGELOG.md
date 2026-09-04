@@ -5,6 +5,119 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-04
+
+### Added: multi-language dashboard (German/English)
+
+- Full i18next-based localization of the dashboard, switchable in
+  Settings, persisted in the browser. Every page and component
+  converted from hardcoded English strings.
+
+### Added: dashboard theme system and selectable layout
+
+- Six selectable themes (Dark, Light, Sci-Fi, Modern, Classic, Retro
+  Terminal) driven entirely by CSS custom properties, plus two
+  structural navigation layouts (top bar / sidebar). Both choices are
+  stored in the browser only (localStorage), applied before first
+  paint to avoid a flash of the wrong theme.
+- Restructured the dashboard's shared header into one `Layout`
+  component used by every page — previously only the devices list had
+  a real navigation bar; every other page had no way to reach sibling
+  sections except "back to devices".
+- Settings page reorganized into categorized groups (Account, Display,
+  Monitoring & Retention, Security, Notifications) instead of one long
+  flat list of sections, with proper labeled form fields throughout
+  (Alerts, Releases, Users, device danger-zone) replacing bare
+  placeholder-only inputs.
+- Fixed the app footer to actually stick to the bottom of the viewport
+  on short pages, and gave it a real copyright line.
+
+### Added: create dashboard users from the UI
+
+- `POST /api/v1/users` generates a random password (shown once) and
+  assigns a role; `mfa_required` defaults to true so a new user is
+  forced through TOTP setup on first login. Previously the only way to
+  create a user at all was the `createadmin` CLI bootstrap command.
+
+### Added: automatic GitHub release import for agent updates
+
+- `internal/agentrelease.GitHubSyncer` polls a configured GitHub repo
+  for `agent-*` releases and imports them as `agent_versions` rows,
+  reading `.sha256`/`.sig` sidecar assets that `wr-release-sign -sign`
+  now writes automatically alongside its existing stdout output. Every
+  import still goes through the same Ed25519 signature verification as
+  the manual publish form — GitHub is only ever a transport, never a
+  trust source. Manual entry keeps working unchanged. Configurable via
+  `agent.github_repo` / `agent.github_release_sync_interval` (0 =
+  disabled by default); a "Sync from GitHub" button in the dashboard
+  triggers it on demand.
+
+### Fixed: Windows agent install/upgrade reliability
+
+- `icacls` was granting NTFS permissions to the literal name
+  `Administrators`, which silently fails to resolve on non-English
+  Windows (e.g. German `Administratoren`) — switched to the
+  locale-independent well-known SIDs (`*S-1-5-18` for SYSTEM,
+  `*S-1-5-32-544` for Administrators) in both
+  `deployment/windows/install-{agent,core}.ps1`.
+- The Windows agent logged exclusively to stdout, which the Windows
+  Service Control Manager never connects to anything — a
+  service-mode agent's logs, including fatal startup errors, were
+  silently lost with no way to diagnose them. It now also writes to
+  `%ProgramData%\WartungsRemote\logs\agent.log` (simple size-based
+  rotation), falling back to stdout-only if the file can't be opened.
+- A fatal startup error (bad config, enrollment failure, ...) left the
+  service process running indefinitely while doing nothing, reporting
+  a misleading "Running" status forever — now exits so the service
+  manager reflects reality.
+- `install-agent.ps1` never stopped a running service before
+  overwriting its binary (upgrade would fail with a file-in-use
+  error), never updated `server_url` in an already-existing
+  `agent.yaml`, and never cleared a stale device identity when handed
+  a fresh enrollment token — all three fixed, and mirrored in the new
+  graphical installer below.
+- The dashboard's generated Windows quickinstall command, and the
+  quickinstall script's own internal chained call, now invoke the
+  downloaded `.ps1` via `powershell -ExecutionPolicy Bypass -File`
+  instead of direct dot-sourcing, so the default `Restricted`
+  execution policy on most Windows machines doesn't block it.
+
+### Added: graphical Windows installer
+
+- `deployment/windows/installer/` — a self-contained
+  `WartungsRemoteAgentSetup.exe` (.NET/WinForms, ~60 MB, no internet
+  access needed on the target machine) with a small wizard: server URL
+  and enrollment token fields, automatic UAC elevation via its
+  application manifest (no execution-policy issues since it isn't a
+  script), and the same upgrade/ACL handling as the PowerShell
+  installer. Built via `build-installer.ps1`.
+
+### Fixed: session-rejection visibility
+
+- The admin session middleware returned 401 on every
+  missing/expired/revoked session without logging anything —
+  diagnosing an unexpected logout required guessing. It now logs the
+  specific reason (no cookie / not found / revoked / expired) with
+  path and remote address.
+
+### Added: inactivity auto-logout
+
+- The dashboard now logs a session out automatically after 15 minutes
+  without any activity in the tab, with a small countdown badge in the
+  header and a clear "logged out due to inactivity" message on
+  return to the login screen.
+
+### Fixed: deterrent page's own styling silently stripped by CSP
+
+- The public listener's "nothing to see here" page has its own
+  inline `<style>` block, which the site-wide `Content-Security-Policy:
+  default-src 'self'` (correctly strict everywhere else) was blocking
+  without `unsafe-inline` — the page rendered as unstyled black-on-
+  white HTML instead of its intended dark, centered design. Fixed by
+  giving that one response a `style-src` CSP value scoped to a SHA-256
+  hash of its own stylesheet, rather than weakening the policy
+  site-wide.
+
 ### Added: backup script for native (non-Docker) installs
 
 - `scripts/backup-server.sh` only ever worked for the Docker Compose

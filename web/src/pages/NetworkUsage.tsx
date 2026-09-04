@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { NetworkUsageApi, ApiError, type DeviceNetworkTotal } from '../api'
 
 function formatBytes(n: number): string {
@@ -10,6 +11,7 @@ function formatBytes(n: number): string {
 }
 
 export default function NetworkUsage() {
+  const { t } = useTranslation()
   const [totals, setTotals] = useState<DeviceNetworkTotal[]>([])
   const [hours, setHours] = useState(24)
   const [error, setError] = useState('')
@@ -21,7 +23,7 @@ export default function NetworkUsage() {
     try {
       setTotals((await NetworkUsageApi.summary(hours)) ?? [])
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load network usage')
+      setError(err instanceof ApiError ? err.message : t('networkUsage.loadFailed'))
     } finally {
       setLoading(false)
     }
@@ -33,53 +35,47 @@ export default function NetworkUsage() {
   }, [hours])
 
   return (
-    <div className="page">
-      <Link to="/">&larr; Back to devices</Link>
-      <h1>Network usage</h1>
-      <p>
-        Which devices are using the most bandwidth, ranked by total traffic. "To server" is just
-        this agent's own control-channel overhead — everything else on this device's network is
-        "total". Based on raw samples, so an overly long window may miss devices' older history
-        once it's past the configured raw retention (Settings → Network traffic history retention).
-      </p>
+    <>
+      <h1>{t('networkUsage.title')}</h1>
+      <p>{t('networkUsage.hint')}</p>
       <div className="toolbar">
         <label>
-          Window:{' '}
+          {t('networkUsage.window')}:{' '}
           <select value={hours} onChange={(e) => setHours(Number(e.target.value))}>
-            <option value={1}>Last hour</option>
-            <option value={24}>Last 24 hours</option>
-            <option value={168}>Last 7 days</option>
+            <option value={1}>{t('networkUsage.lastHour')}</option>
+            <option value={24}>{t('networkUsage.last24Hours')}</option>
+            <option value={168}>{t('networkUsage.last7Days')}</option>
           </select>
         </label>
       </div>
       {error && <p className="error">{error}</p>}
       {loading ? (
-        <p>Loading...</p>
+        <p>{t('common.loading')}</p>
       ) : (
         <table className="device-table">
           <thead>
             <tr>
-              <th>Device</th>
-              <th>Total sent</th>
-              <th>Total received</th>
-              <th>Sent to server</th>
-              <th>Received from server</th>
+              <th>{t('networkUsage.device')}</th>
+              <th>{t('networkUsage.totalSent')}</th>
+              <th>{t('networkUsage.totalReceived')}</th>
+              <th>{t('networkUsage.sentToServer')}</th>
+              <th>{t('networkUsage.receivedFromServer')}</th>
             </tr>
           </thead>
           <tbody>
-            {totals.map((t) => (
-              <tr key={t.device_id}>
-                <td><Link to={`/devices/${t.device_id}`}>{t.display_name}</Link></td>
-                <td>{formatBytes(t.bytes_sent_total)}</td>
-                <td>{formatBytes(t.bytes_recv_total)}</td>
-                <td>{formatBytes(t.bytes_sent_control)}</td>
-                <td>{formatBytes(t.bytes_recv_control)}</td>
+            {totals.map((row) => (
+              <tr key={row.device_id}>
+                <td><Link to={`/devices/${row.device_id}`}>{row.display_name}</Link></td>
+                <td>{formatBytes(row.bytes_sent_total)}</td>
+                <td>{formatBytes(row.bytes_recv_total)}</td>
+                <td>{formatBytes(row.bytes_sent_control)}</td>
+                <td>{formatBytes(row.bytes_recv_control)}</td>
               </tr>
             ))}
-            {totals.length === 0 && <tr><td colSpan={5}>No network traffic data in this window yet.</td></tr>}
+            {totals.length === 0 && <tr><td colSpan={5}>{t('networkUsage.noData')}</td></tr>}
           </tbody>
         </table>
       )}
-    </div>
+    </>
   )
 }

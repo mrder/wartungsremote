@@ -47,7 +47,7 @@ export const api = {
   get: <T,>(path: string) => request<T>('GET', path),
   post: <T,>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
   patch: <T,>(path: string, body?: unknown) => request<T>('PATCH', path, body ?? {}),
-  del: <T,>(path: string) => request<T>('DELETE', path),
+  del: <T,>(path: string, body?: unknown) => request<T>('DELETE', path, body),
 }
 
 // --- Types matching docs/API.md -------------------------------------------
@@ -185,6 +185,11 @@ export const DeviceApi = {
     api.patch(`/devices/${id}`, body),
   maintenance: (id: string) => api.get<MaintenanceSession[]>(`/devices/${id}/maintenance`),
   ipHistory: (id: string, hours = 24) => api.get<IPHistoryEntry[]>(`/devices/${id}/ip-history?hours=${hours}`),
+  revoke: (id: string, reauthId: string) => api.post(`/devices/${id}/revoke`, { reauth_id: reauthId }),
+  // Only succeeds server-side for a device that has never connected
+  // (no last_seen_at) — anything with real history must be revoked
+  // instead, never hard-deleted.
+  delete: (id: string, reauthId: string) => api.del(`/devices/${id}`, { reauth_id: reauthId }),
 }
 
 export interface NetworkMetricsPoint {
@@ -279,6 +284,8 @@ export interface AdminUser {
 
 export const UserApi = {
   list: () => api.get<AdminUser[]>('/users'),
+  create: (username: string, displayName: string, role: string) =>
+    api.post<{ id: string; username: string; password: string }>('/users', { username, display_name: displayName, role }),
   setStatus: (id: string, status: 'active' | 'disabled' | 'locked') => api.patch(`/users/${id}`, { status }),
   setMfaRequired: (id: string, mfaRequired: boolean) => api.patch(`/users/${id}`, { mfa_required: mfaRequired }),
   revokeSessions: (id: string) => api.post(`/users/${id}/revoke-sessions`),
@@ -379,6 +386,7 @@ export const ReleaseApi = {
   }) => api.post<AgentRelease>('/agent/releases', rl),
   setBlocked: (id: string, blocked: boolean) => api.patch(`/agent/releases/${id}`, { blocked }),
   triggerUpdate: (deviceId: string, channel?: string) => api.post<{ target_version: string }>(`/devices/${deviceId}/update`, { channel }),
+  syncFromGitHub: () => api.post<{ imported: number; skipped: number; errors: string[] }>('/agent/releases/sync'),
 }
 
 export const ReauthApi = {

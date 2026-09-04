@@ -6,12 +6,15 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"wartungsremote/internal/audit"
 	authpkg "wartungsremote/internal/auth"
+	"wartungsremote/internal/platform"
 )
 
 func (h *handlers) handleRevokeAllEnrollments(w http.ResponseWriter, r *http.Request) {
@@ -54,6 +57,87 @@ func (h *handlers) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, out, nil)
+}
+
+// validRoleNames mirrors migrations/0002_seed_rbac.sql — kept in sync
+// manually since roles are seed data, not an enum in Go.
+var validRoleNames = map[string]bool{
+	"read_only": true, "technician": true, "admin": true, "super_admin": true,
+}
+
+func (h *handlers) handleCreateUser(w http.ResponseWriter, r *http.Request) {
+	grants := authpkg.GrantsFromContext(r.Context())
+	if !authpkg.HasAnyGrant(grants, authpkg.PermUserManage) {
+		writeErr(w, http.StatusForbidden, "permission_denied", "Not permitted")
+		return
+	}
+	var body struct {
+		Username    string `json:"username"`
+		DisplayName string `json:"display_name"`
+		Role        string `json:"role"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_request", "Malformed request body")
+		return
+	}
+	if body.Username == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_request", "username is required")
+		return
+	}
+	if !validRoleNames[body.Role] {
+		writeErr(w, http.StatusBadRequest, "invalid_request", "role must be one of read_only, technician, admin, super_admin")
+		return
+	}
+
+	password, err := platform.GenerateSupportPassword(20)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to generate password")
+		return
+	}
+	argon2Params := authpkg.Argon2Params{
+		MemoryKiB:   h.cfg.Security.Argon2MemoryKiB,
+		Iterations:  h.cfg.Security.Argon2Iterations,
+		Parallelism: h.cfg.Security.Argon2Parallelism,
+		SaltLen:     16,
+		KeyLen:      32,
+	}
+	hash, err := authpkg.HashPassword(password, argon2Params)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to hash password")
+		return
+	}
+
+	userID, err := h.auth.Repo.CreateUser(r.Context(), body.Username, body.DisplayName, hash)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			writeErr(w, http.StatusConflict, "username_taken", "That username is already in use")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to create user")
+		return
+	}
+	roleID, err := h.auth.Repo.RoleIDByName(r.Context(), body.Role)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to look up role")
+		return
+	}
+	if err := h.auth.Repo.AssignRole(r.Context(), userID, roleID, authpkg.ScopeGlobal, nil); err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal_error", "Failed to assign role")
+		return
+	}
+
+	actor, _ := authpkg.UserFromContext(r.Context())
+	_ = h.audit.Record(r.Context(), audit.Event{
+		ActorType: audit.ActorUser, ActorID: &actor.ID,
+		EventType: "user.created", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
+		Metadata: map[string]any{"target_user_id": userID, "username": body.Username, "role": body.Role},
+	})
+	// The generated password is returned exactly once — it is never stored
+	// or logged in plaintext anywhere past this response (docs/SECURITY.md §9),
+	// and mfa_required defaults to true on every new user (auth.Repo.CreateUser),
+	// so the login flow forces TOTP setup the first time they sign in.
+	writeJSON(w, http.StatusOK, map[string]any{"id": userID, "username": body.Username, "password": password}, nil)
 }
 
 func (h *handlers) handleSetUserStatus(w http.ResponseWriter, r *http.Request) {

@@ -12,9 +12,9 @@
     marked as a GitHub pre-release. "beta" installs the newest agent-*
     release regardless of pre-release status.
 .EXAMPLE
-    $s = New-TemporaryFile
+    $s = New-TemporaryFile | Rename-Item -NewName { $_.Name + ".ps1" } -PassThru
     Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/mrder/wartungsremote/main/scripts/quickinstall-agent-windows.ps1" -OutFile $s
-    & $s -ServerUrl "https://remote.example.de" -Token "wr_enroll_XXXXXXXX"
+    powershell -ExecutionPolicy Bypass -File $s -ServerUrl "https://remote.example.de" -Token "wr_enroll_XXXXXXXX"
 #>
 #Requires -RunAsAdministrator
 param(
@@ -48,7 +48,7 @@ try {
     Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/$Repo/releases/download/$tag/wr-agent-windows-amd64.exe" -OutFile $exePath
     Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/$Repo/main/deployment/windows/install-agent.ps1" -OutFile $installScriptPath
 
-    & $installScriptPath -ServerUrl $ServerUrl -Token $Token -BinaryPath $exePath
+    powershell -ExecutionPolicy Bypass -File $installScriptPath -ServerUrl $ServerUrl -Token $Token -BinaryPath $exePath
 
     Write-Host "Done. Check status with: Get-Service wartungsremote-agent"
 }

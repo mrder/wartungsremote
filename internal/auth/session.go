@@ -14,7 +14,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var ErrSessionInvalid = errors.New("auth: session invalid or expired")
+var (
+	ErrSessionInvalid = errors.New("auth: session invalid or expired")
+	// These distinguish *why* for diagnostics (logged by RequireSession);
+	// callers that only care about validity can keep comparing to
+	// ErrSessionInvalid via errors.Is, since all three wrap it.
+	ErrSessionNotFound = fmt.Errorf("%w: no such session (bogus or already-cleared token)", ErrSessionInvalid)
+	ErrSessionRevoked  = fmt.Errorf("%w: revoked", ErrSessionInvalid)
+	ErrSessionExpired  = fmt.Errorf("%w: absolute or idle TTL elapsed", ErrSessionInvalid)
+)
 
 type Session struct {
 	ID            uuid.UUID
@@ -106,14 +114,17 @@ func (s *SessionStore) Validate(ctx context.Context, token string) (Session, err
 		FROM user_sessions WHERE session_token_hash = $1
 	`, hash).Scan(&sess.ID, &sess.UserID, &sess.CreatedAt, &sess.LastSeenAt, &sess.ExpiresAt, &sess.IdleExpiresAt, &revokedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Session{}, ErrSessionInvalid
+		return Session{}, ErrSessionNotFound
 	}
 	if err != nil {
 		return Session{}, fmt.Errorf("auth: validate session: %w", err)
 	}
 	now := time.Now().UTC()
-	if revokedAt != nil || now.After(sess.ExpiresAt) || now.After(sess.IdleExpiresAt) {
-		return Session{}, ErrSessionInvalid
+	if revokedAt != nil {
+		return Session{}, ErrSessionRevoked
+	}
+	if now.After(sess.ExpiresAt) || now.After(sess.IdleExpiresAt) {
+		return Session{}, ErrSessionExpired
 	}
 
 	newIdle := now.Add(s.idleTTL)

@@ -8,6 +8,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -21,7 +22,7 @@ import (
 	"wartungsremote/internal/config"
 )
 
-const agentVersion = "0.2.1"
+const agentVersion = "0.2.2"
 
 type program struct {
 	cancel context.CancelFunc
@@ -44,6 +45,11 @@ func (p *program) Stop(s service.Service) error {
 func (p *program) run(ctx context.Context) {
 	if err := runAgent(ctx); err != nil {
 		slog.Error("wr-agent exited with error", "error", err)
+		// A fatal startup error (bad config, enrollment failure, ...) must
+		// not leave the goroutine dying silently while the OS still reports
+		// the service as "Running" — exit so the service manager reflects
+		// reality and any configured restart/alerting kicks in.
+		os.Exit(1)
 	}
 }
 
@@ -102,6 +108,36 @@ func main() {
 	}
 }
 
+// openLogWriter returns a writer that tees logs to stdout (so `--service run`
+// in a foreground console and Linux's systemd journal capture keep working
+// unchanged) and to a file under logDir. Windows Service Control Manager does
+// not connect a running service's stdout to anything, so without the file a
+// service-mode agent's logs — including fatal startup errors — are silently
+// lost with no way to diagnose them. Any failure to open the file (missing
+// permissions, logDir empty, ...) falls back to stdout-only rather than
+// preventing the agent from starting.
+func openLogWriter(logDir string) (io.Writer, func()) {
+	noop := func() {}
+	if logDir == "" {
+		return os.Stdout, noop
+	}
+	if err := os.MkdirAll(logDir, 0o700); err != nil {
+		fmt.Fprintln(os.Stderr, "wr-agent: could not create log dir, logging to stdout only:", err)
+		return os.Stdout, noop
+	}
+	path := filepath.Join(logDir, "agent.log")
+	const maxLogSize = 10 * 1024 * 1024
+	if info, err := os.Stat(path); err == nil && info.Size() > maxLogSize {
+		_ = os.Rename(path, path+".old")
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "wr-agent: could not open log file, logging to stdout only:", err)
+		return os.Stdout, noop
+	}
+	return io.MultiWriter(os.Stdout, f), func() { f.Close() }
+}
+
 func runAgent(ctx context.Context) error {
 	configPath := agentcore.DefaultPaths().ConfigFile
 	for i, a := range os.Args {
@@ -110,16 +146,20 @@ func runAgent(ctx context.Context) error {
 		}
 	}
 
+	paths := agentcore.DefaultPaths()
+	logWriter, closeLog := openLogWriter(paths.LogDir)
+	defer closeLog()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(logWriter, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
 	cfg, err := config.LoadAgent(configPath)
 	if err != nil {
+		slog.Error("failed to load config", "path", configPath, "error", err)
 		return err
 	}
-	paths := agentcore.DefaultPaths()
 	cfg.DataDir = paths.DataDir
 	cfg.LogDir = paths.LogDir
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: parseLevel(cfg.LogLevel)}))
-	slog.SetDefault(logger)
+	slog.SetDefault(slog.New(slog.NewJSONHandler(logWriter, &slog.HandlerOptions{Level: parseLevel(cfg.LogLevel)})))
 	slog.Info("wr-agent starting", "version", agentVersion, "server_url", cfg.ServerURL, "config", configPath)
 	if !strings.HasPrefix(cfg.ServerURL, "https://") {
 		slog.Warn("server_url is not HTTPS — the control channel to the server is unencrypted on the wire; set up a TLS-terminating reverse proxy on the server and update server_url", "server_url", cfg.ServerURL)

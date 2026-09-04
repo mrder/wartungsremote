@@ -78,6 +78,30 @@ func (h *handlers) handleCreateRelease(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, rl, nil)
 }
 
+func (h *handlers) handleSyncGitHubReleases(w http.ResponseWriter, r *http.Request) {
+	grants := authpkg.GrantsFromContext(r.Context())
+	if !authpkg.HasAnyGrant(grants, authpkg.PermAgentUpdate) {
+		writeErr(w, http.StatusForbidden, "permission_denied", "Not permitted")
+		return
+	}
+	if h.githubSyncer == nil {
+		writeErr(w, http.StatusPreconditionFailed, "not_configured", "No trusted release public key configured (WR_RELEASE_PUBLIC_KEY_FILE)")
+		return
+	}
+	result, err := h.githubSyncer.SyncOnce(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "github_sync_failed", "Failed to reach GitHub: "+err.Error())
+		return
+	}
+	user, _ := authpkg.UserFromContext(r.Context())
+	_ = h.audit.Record(r.Context(), audit.Event{
+		ActorType: audit.ActorUser, ActorID: &user.ID,
+		EventType: "agent_release.github_synced", Result: audit.ResultSuccess, SourceIP: h.clientIP(r),
+		Metadata: map[string]any{"imported": result.Imported, "skipped": result.Skipped, "errors": result.Errors},
+	})
+	writeJSON(w, http.StatusOK, result, nil)
+}
+
 func (h *handlers) handleSetReleaseBlocked(w http.ResponseWriter, r *http.Request) {
 	grants := authpkg.GrantsFromContext(r.Context())
 	if !authpkg.HasAnyGrant(grants, authpkg.PermAgentUpdate) {

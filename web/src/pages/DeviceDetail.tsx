@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { DeviceApi, CustomerApi, ReleaseApi, AuditApi, ApiError, type Device, type AuditEntry, type Customer, type Group, type MaintenanceSession, type IPHistoryEntry, type NetworkMetricsPoint } from '../api'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import { DeviceApi, CustomerApi, ReleaseApi, AuditApi, ReauthApi, ApiError, type Device, type AuditEntry, type Customer, type Group, type MaintenanceSession, type IPHistoryEntry, type NetworkMetricsPoint } from '../api'
 import StatusBadge from '../components/StatusBadge'
 import TerminalView from '../components/TerminalView'
 import TunnelPanel from '../components/TunnelPanel'
@@ -15,7 +16,9 @@ import { useAuth } from '../AuthContext'
 type Tab = 'overview' | 'monitoring' | 'remote' | 'files' | 'services' | 'processes' | 'logs' | 'maintenance' | 'audit'
 
 export default function DeviceDetail() {
+  const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [device, setDevice] = useState<Device | null>(null)
   const [tab, setTab] = useState<Tab>('overview')
@@ -32,13 +35,18 @@ export default function DeviceDetail() {
   const [updateBusy, setUpdateBusy] = useState(false)
   const [updateMsg, setUpdateMsg] = useState('')
   const [updateChannel, setUpdateChannel] = useState<'stable' | 'beta'>('stable')
+  const [dangerAction, setDangerAction] = useState<'revoke' | 'delete' | null>(null)
+  const [dangerPassword, setDangerPassword] = useState('')
+  const [dangerCode, setDangerCode] = useState('')
+  const [dangerBusy, setDangerBusy] = useState(false)
+  const [dangerError, setDangerError] = useState('')
 
   async function load() {
     if (!id) return
     try {
       setDevice(await DeviceApi.get(id))
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load device')
+      setError(err instanceof ApiError ? err.message : t('deviceDetail.loadFailed'))
     }
   }
 
@@ -70,7 +78,7 @@ export default function DeviceDetail() {
       await DeviceApi.patch(id, { customer_id: customerId || null })
       load()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to assign customer')
+      setError(err instanceof ApiError ? err.message : t('deviceDetail.assignCustomerFailed'))
     }
   }
 
@@ -80,7 +88,7 @@ export default function DeviceDetail() {
       await DeviceApi.patch(id, { group_id: groupId || null })
       load()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to assign group')
+      setError(err instanceof ApiError ? err.message : t('deviceDetail.assignGroupFailed'))
     }
   }
 
@@ -91,7 +99,7 @@ export default function DeviceDetail() {
       await DeviceApi.statusRequest(id)
       setTimeout(load, 2000)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Status request failed')
+      setError(err instanceof ApiError ? err.message : t('deviceDetail.statusRequestFailed'))
     } finally {
       setRequesting(false)
     }
@@ -103,31 +111,56 @@ export default function DeviceDetail() {
     setUpdateMsg('')
     try {
       const res = await ReleaseApi.triggerUpdate(id, updateChannel)
-      setUpdateMsg(`Update to ${res.target_version} triggered.`)
+      setUpdateMsg(t('deviceDetail.updateTriggered', { version: res.target_version }))
     } catch (err) {
-      setUpdateMsg(err instanceof ApiError ? err.message : 'Failed to trigger update')
+      setUpdateMsg(err instanceof ApiError ? err.message : t('deviceDetail.updateFailed'))
     } finally {
       setUpdateBusy(false)
     }
   }
 
-  if (!device) return <div className="page"><Link to="/">&larr; Back</Link>{error && <p className="error">{error}</p>}</div>
+  async function submitDangerAction(e: React.FormEvent) {
+    e.preventDefault()
+    if (!id || !dangerAction) return
+    setDangerError('')
+    setDangerBusy(true)
+    try {
+      const reauth = await ReauthApi.reauth(dangerPassword, dangerCode)
+      if (dangerAction === 'revoke') {
+        await DeviceApi.revoke(id, reauth.reauth_id)
+        setDangerAction(null)
+        setDangerPassword('')
+        setDangerCode('')
+        load()
+      } else {
+        await DeviceApi.delete(id, reauth.reauth_id)
+        navigate('/')
+      }
+    } catch (err) {
+      setDangerError(err instanceof ApiError ? err.message : t('deviceDetail.dangerActionFailed', { action: dangerAction }))
+    } finally {
+      setDangerBusy(false)
+    }
+  }
+
+  if (!device) return <><Link to="/">&larr; {t('common.back')}</Link>{error && <p className="error">{error}</p>}</>
 
   const canTerminal = user?.permissions.includes('remote.terminal')
   const canFiles = user?.permissions.includes('remote.files.read')
   const canUpdate = user?.permissions.includes('agent.update')
   const canTunnel = user?.permissions.includes('remote.tunnel.ssh') || user?.permissions.includes('remote.tunnel.rdp')
+  const canRevoke = user?.permissions.includes('credential.revoke')
   const isWindows = device.os_family === 'windows'
   const defaultFilesPath = isWindows ? 'C:\\' : '/'
 
   return (
-    <div className="page">
-      <Link to="/">&larr; Back to devices</Link>
+    <>
+      <Link to="/">&larr; {t('common.backToDevices')}</Link>
       <header className="device-header">
         <h1>{device.display_name}</h1>
         <StatusBadge kind="status" value={device.status} />
         <StatusBadge kind="health" value={device.health} />
-        <button onClick={requestStatus} disabled={requesting}>Refresh status</button>
+        <button onClick={requestStatus} disabled={requesting}>{t('deviceDetail.refreshStatus')}</button>
       </header>
 
       {device.health_reasons?.length > 0 && (
@@ -137,25 +170,25 @@ export default function DeviceDetail() {
       )}
 
       <nav className="tabs">
-        <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>Overview</button>
-        <button className={tab === 'monitoring' ? 'active' : ''} onClick={() => setTab('monitoring')}>Monitoring</button>
-        {canTerminal && <button className={tab === 'remote' ? 'active' : ''} onClick={() => setTab('remote')}>Remote</button>}
-        {canFiles && <button className={tab === 'files' ? 'active' : ''} onClick={() => setTab('files')}>Files</button>}
-        <button className={tab === 'services' ? 'active' : ''} onClick={() => setTab('services')}>Services</button>
-        <button className={tab === 'processes' ? 'active' : ''} onClick={() => setTab('processes')}>Processes</button>
-        {canFiles && <button className={tab === 'logs' ? 'active' : ''} onClick={() => setTab('logs')}>Logs</button>}
-        <button className={tab === 'maintenance' ? 'active' : ''} onClick={() => setTab('maintenance')}>Maintenance</button>
-        <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>Audit</button>
+        <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>{t('deviceDetail.tabs.overview')}</button>
+        <button className={tab === 'monitoring' ? 'active' : ''} onClick={() => setTab('monitoring')}>{t('deviceDetail.tabs.monitoring')}</button>
+        {canTerminal && <button className={tab === 'remote' ? 'active' : ''} onClick={() => setTab('remote')}>{t('deviceDetail.tabs.remote')}</button>}
+        {canFiles && <button className={tab === 'files' ? 'active' : ''} onClick={() => setTab('files')}>{t('deviceDetail.tabs.files')}</button>}
+        <button className={tab === 'services' ? 'active' : ''} onClick={() => setTab('services')}>{t('deviceDetail.tabs.services')}</button>
+        <button className={tab === 'processes' ? 'active' : ''} onClick={() => setTab('processes')}>{t('deviceDetail.tabs.processes')}</button>
+        {canFiles && <button className={tab === 'logs' ? 'active' : ''} onClick={() => setTab('logs')}>{t('deviceDetail.tabs.logs')}</button>}
+        <button className={tab === 'maintenance' ? 'active' : ''} onClick={() => setTab('maintenance')}>{t('deviceDetail.tabs.maintenance')}</button>
+        <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}>{t('deviceDetail.tabs.audit')}</button>
       </nav>
 
       {tab === 'overview' && (
         <table className="kv-table">
           <tbody>
-            <tr><td>Hostname</td><td>{device.hostname || '-'}</td></tr>
-            <tr><td>OS</td><td>{device.os_family} {device.os_name} {device.os_version}</td></tr>
-            <tr><td>Architecture</td><td>{device.architecture || '-'}</td></tr>
+            <tr><td>{t('deviceDetail.hostname')}</td><td>{device.hostname || '-'}</td></tr>
+            <tr><td>{t('deviceList.os')}</td><td>{device.os_family} {device.os_name} {device.os_version}</td></tr>
+            <tr><td>{t('deviceDetail.architecture')}</td><td>{device.architecture || '-'}</td></tr>
             <tr>
-              <td>Agent version</td>
+              <td>{t('deviceDetail.agentVersion')}</td>
               <td>
                 {device.agent_version || '-'}
                 {canUpdate && device.status === 'online' && (
@@ -169,74 +202,74 @@ export default function DeviceDetail() {
                       <option value="beta">beta</option>
                     </select>
                     <button onClick={triggerUpdate} disabled={updateBusy} style={{ marginLeft: '0.5rem' }}>
-                      {updateBusy ? 'Triggering...' : 'Check for update'}
+                      {updateBusy ? t('deviceDetail.triggering') : t('deviceDetail.checkForUpdate')}
                     </button>
                   </>
                 )}
                 {updateMsg && <span style={{ marginLeft: '0.5rem' }}>{updateMsg}</span>}
               </td>
             </tr>
-            <tr><td>Install ID</td><td><code>{device.install_id}</code></td></tr>
-            <tr><td>Last seen</td><td>{device.last_seen_at ? new Date(device.last_seen_at).toLocaleString() : '-'}</td></tr>
+            <tr><td>{t('deviceDetail.installId')}</td><td><code>{device.install_id}</code></td></tr>
+            <tr><td>{t('deviceList.lastSeen')}</td><td>{device.last_seen_at ? new Date(device.last_seen_at).toLocaleString() : '-'}</td></tr>
             <tr>
-              <td>Public IP</td>
+              <td>{t('deviceDetail.publicIp')}</td>
               <td>
                 <span
                   title={
                     ipHistory.length > 0
-                      ? `${ipHistory.length} distinct IP(s) in last 24h:\n` +
-                        ipHistory.map((h) => `${h.IP} (last seen ${new Date(h.LastSeen).toLocaleString()})`).join('\n')
-                      : 'No IP history recorded yet in the last 24h'
+                      ? t('deviceDetail.ipHistoryTitle', { count: ipHistory.length }) + '\n' +
+                        ipHistory.map((h) => `${h.IP} (${t('deviceDetail.lastSeenAt', { time: new Date(h.LastSeen).toLocaleString() })})`).join('\n')
+                      : t('deviceDetail.noIpHistory')
                   }
                   style={{ cursor: 'help', borderBottom: '1px dotted var(--muted)' }}
                 >
                   {device.last_public_ip || '-'}
-                  {ipHistory.length > 1 && <span style={{ color: 'var(--yellow)', marginLeft: '0.4rem' }}>({ipHistory.length} in 24h)</span>}
+                  {ipHistory.length > 1 && <span style={{ color: 'var(--yellow)', marginLeft: '0.4rem' }}>({t('deviceDetail.inLast24h', { count: ipHistory.length })})</span>}
                 </span>
               </td>
             </tr>
             {device.transport_secure === false && (
               <tr>
-                <td>Connection</td>
+                <td>{t('deviceDetail.connection')}</td>
                 <td>
-                  <span className="badge badge-yellow" title="This agent reported connecting without TLS (server_url is not https://) — traffic to/from this device is unencrypted on the wire.">
-                    Unencrypted
+                  <span className="badge badge-yellow" title={t('deviceDetail.unencryptedTitle')}>
+                    {t('deviceDetail.unencrypted')}
                   </span>
                 </td>
               </tr>
             )}
             {canTunnel && (
               <tr>
-                <td>Remote-support account</td>
+                <td>{t('deviceDetail.supportAccount')}</td>
                 <td>
                   {device.support_credential_available ? (
                     <span className="badge badge-green">
-                      Ready{device.support_credential_updated_at ? ` (set ${new Date(device.support_credential_updated_at).toLocaleString()})` : ''}
+                      {t('deviceDetail.ready')}{device.support_credential_updated_at ? ` (${t('deviceDetail.setAt', { time: new Date(device.support_credential_updated_at).toLocaleString() })})` : ''}
                     </span>
                   ) : (
-                    <span className="badge badge-yellow" title="The device reports this shortly after first connecting, or after policy changes enable it">
-                      Not yet provisioned
+                    <span className="badge badge-yellow" title={t('deviceDetail.notProvisionedTitle')}>
+                      {t('deviceDetail.notProvisioned')}
                     </span>
                   )}
-                  {' — see Remote tab to reveal/rotate'}
+                  {' — ' + t('deviceDetail.seeRemoteTab')}
                 </td>
               </tr>
             )}
-            <tr><td>Tags</td><td>{device.tags?.join(', ') || '-'}</td></tr>
+            <tr><td>{t('deviceDetail.tags')}</td><td>{device.tags?.join(', ') || '-'}</td></tr>
             <tr>
-              <td>Customer</td>
+              <td>{t('customers.title')}</td>
               <td>
                 <select value={device.customer_id || ''} onChange={(e) => assignCustomer(e.target.value)}>
-                  <option value="">- none -</option>
+                  <option value="">{t('common.none')}</option>
                   {customers.map((c) => <option key={c.ID} value={c.ID}>{c.Name}</option>)}
                 </select>
               </td>
             </tr>
             <tr>
-              <td>Group</td>
+              <td>{t('deviceDetail.group')}</td>
               <td>
                 <select value={device.group_id || ''} onChange={(e) => assignGroup(e.target.value)}>
-                  <option value="">- none -</option>
+                  <option value="">{t('common.none')}</option>
                   {groups
                     .filter((g) => !g.CustomerID || g.CustomerID === device.customer_id)
                     .map((g) => <option key={g.ID} value={g.ID}>{g.Name}</option>)}
@@ -247,14 +280,59 @@ export default function DeviceDetail() {
         </table>
       )}
 
+      {tab === 'overview' && canRevoke && device.status !== 'revoked' && (
+        <div className="danger-zone" style={{ marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--border, #444)' }}>
+          <h3>{t('deviceDetail.dangerZone')}</h3>
+          {!dangerAction ? (
+            <div className="toolbar">
+              <button onClick={() => setDangerAction('revoke')}>{t('deviceDetail.revokeDevice')}</button>
+              {!device.last_seen_at && <button onClick={() => setDangerAction('delete')}>{t('deviceDetail.deleteDevice')}</button>}
+            </div>
+          ) : (
+            <form onSubmit={submitDangerAction} className="field-form">
+              <p style={{ width: '100%' }}>
+                {dangerAction === 'revoke'
+                  ? t('deviceDetail.confirmRevokeText', { name: device.display_name })
+                  : t('deviceDetail.confirmDeleteText', { name: device.display_name })}
+              </p>
+              <label>
+                {t('deviceDetail.yourPassword')}
+                <input
+                  type="password"
+                  value={dangerPassword}
+                  onChange={(e) => setDangerPassword(e.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                {t('account.mfaCode')}
+                <input
+                  value={dangerCode}
+                  onChange={(e) => setDangerCode(e.target.value)}
+                  required
+                  style={{ width: '6rem' }}
+                />
+              </label>
+              <button type="submit" disabled={dangerBusy}>
+                {dangerBusy ? t('deviceDetail.working') : dangerAction === 'revoke' ? t('deviceDetail.confirmRevoke') : t('deviceDetail.confirmDelete')}
+              </button>
+              <button type="button" onClick={() => { setDangerAction(null); setDangerPassword(''); setDangerCode(''); setDangerError('') }}>
+                {t('common.cancel')}
+              </button>
+            </form>
+          )}
+          {dangerError && <p className="error">{dangerError}</p>}
+        </div>
+      )}
+
       {tab === 'monitoring' && (
         <div>
           <div className="toolbar">
             <label>
-              Resolution:{' '}
+              {t('deviceDetail.resolution')}:{' '}
               <select value={resolution} onChange={(e) => setResolution(e.target.value as 'raw' | 'hourly')}>
-                <option value="raw">Raw (last 24h)</option>
-                <option value="hourly">Hourly average (last 30d)</option>
+                <option value="raw">{t('deviceDetail.rawLast24h')}</option>
+                <option value="hourly">{t('deviceDetail.hourlyLast30d')}</option>
               </select>
             </label>
           </div>
@@ -265,48 +343,44 @@ export default function DeviceDetail() {
             points={metrics.map((m) => ({ t: new Date(m.observed_at).getTime(), v: m.cpu_percent }))}
           />
           <MetricsChart
-            title="RAM used"
+            title={t('deviceDetail.ramUsed')}
             unit=" GB"
             points={metrics.map((m) => ({ t: new Date(m.observed_at).getTime(), v: m.memory_used_bytes / 1e9 }))}
           />
           <MetricsChart
-            title="Disk used"
+            title={t('deviceDetail.diskUsed')}
             unit="%"
             max={100}
             points={metrics
               .filter((m) => m.disk_total_bytes > 0)
               .map((m) => ({ t: new Date(m.observed_at).getTime(), v: (m.disk_used_bytes / m.disk_total_bytes) * 100 }))}
           />
-          <h4 style={{ marginTop: '1.5rem', marginBottom: 0 }}>Network</h4>
-          <p style={{ color: 'var(--muted, #888)', fontSize: '0.85rem' }}>
-            "Total" is all network traffic on the device; "to server" is just this agent's own
-            control-channel overhead — useful for telling general bandwidth use apart from what this
-            tool itself adds.
-          </p>
+          <h4 style={{ marginTop: '1.5rem', marginBottom: 0 }}>{t('deviceDetail.network')}</h4>
+          <p style={{ color: 'var(--muted, #888)', fontSize: '0.85rem' }}>{t('deviceDetail.networkHint')}</p>
           <MetricsChart
-            title="Sent (total)"
+            title={t('deviceDetail.sentTotal')}
             unit=" KB/s"
             points={networkMetrics.map((m) => ({ t: new Date(m.observed_at).getTime(), v: m.bytes_sent_total_per_sec / 1024 }))}
           />
           <MetricsChart
-            title="Received (total)"
+            title={t('deviceDetail.receivedTotal')}
             unit=" KB/s"
             points={networkMetrics.map((m) => ({ t: new Date(m.observed_at).getTime(), v: m.bytes_recv_total_per_sec / 1024 }))}
           />
           <MetricsChart
-            title="Sent (to server)"
+            title={t('deviceDetail.sentToServer')}
             unit=" KB/s"
             color="var(--accent-2, #ff9e4a)"
             points={networkMetrics.map((m) => ({ t: new Date(m.observed_at).getTime(), v: m.bytes_sent_control_per_sec / 1024 }))}
           />
           <MetricsChart
-            title="Received (to server)"
+            title={t('deviceDetail.receivedToServer')}
             unit=" KB/s"
             color="var(--accent-2, #ff9e4a)"
             points={networkMetrics.map((m) => ({ t: new Date(m.observed_at).getTime(), v: m.bytes_recv_control_per_sec / 1024 }))}
           />
           <table className="device-table">
-            <thead><tr><th>Time</th><th>CPU %</th><th>RAM used/total</th><th>Disk used/total</th></tr></thead>
+            <thead><tr><th>{t('deviceDetail.time')}</th><th>CPU %</th><th>{t('deviceDetail.ramUsedTotal')}</th><th>{t('deviceDetail.diskUsedTotal')}</th></tr></thead>
             <tbody>
               {metrics.map((m, i) => (
                 <tr key={i}>
@@ -316,7 +390,7 @@ export default function DeviceDetail() {
                   <td>{(m.disk_used_bytes / 1e9).toFixed(1)} / {(m.disk_total_bytes / 1e9).toFixed(1)} GB</td>
                 </tr>
               ))}
-              {metrics.length === 0 && <tr><td colSpan={4}>No metrics yet.</td></tr>}
+              {metrics.length === 0 && <tr><td colSpan={4}>{t('deviceDetail.noMetrics')}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -329,38 +403,38 @@ export default function DeviceDetail() {
             <TunnelPanel deviceId={device.id} osFamily={device.os_family} />
             <SupportCredentialPanel deviceId={device.id} />
           </>
-        ) : <p>Device must be online for remote access.</p>
+        ) : <p>{t('deviceDetail.mustBeOnlineRemote')}</p>
       )}
 
       {tab === 'files' && canFiles && (
-        device.status === 'online' ? <FilesBrowser deviceId={device.id} defaultPath={defaultFilesPath} /> : <p>Device must be online to browse files.</p>
+        device.status === 'online' ? <FilesBrowser deviceId={device.id} defaultPath={defaultFilesPath} /> : <p>{t('deviceDetail.mustBeOnlineFiles')}</p>
       )}
 
       {tab === 'services' && (
-        device.status === 'online' ? <ServicesPanel deviceId={device.id} /> : <p>Device must be online to manage services.</p>
+        device.status === 'online' ? <ServicesPanel deviceId={device.id} /> : <p>{t('deviceDetail.mustBeOnlineServices')}</p>
       )}
 
       {tab === 'processes' && (
-        device.status === 'online' ? <ProcessesPanel deviceId={device.id} /> : <p>Device must be online to manage processes.</p>
+        device.status === 'online' ? <ProcessesPanel deviceId={device.id} /> : <p>{t('deviceDetail.mustBeOnlineProcesses')}</p>
       )}
 
       {tab === 'logs' && canFiles && (
-        device.status === 'online' ? <LogsPanel deviceId={device.id} /> : <p>Device must be online to query logs.</p>
+        device.status === 'online' ? <LogsPanel deviceId={device.id} /> : <p>{t('deviceDetail.mustBeOnlineLogs')}</p>
       )}
 
       {tab === 'maintenance' && (
         <table className="device-table">
-          <thead><tr><th>Started</th><th>Ended</th><th>Result</th><th>Summary</th></tr></thead>
+          <thead><tr><th>{t('deviceDetail.started')}</th><th>{t('deviceDetail.ended')}</th><th>{t('deviceDetail.result')}</th><th>{t('alerts.summary')}</th></tr></thead>
           <tbody>
             {maintenanceHistory.map((m) => (
               <tr key={m.ID}>
                 <td>{new Date(m.StartedAt).toLocaleString()}</td>
-                <td>{m.EndedAt ? new Date(m.EndedAt).toLocaleString() : 'in progress'}</td>
+                <td>{m.EndedAt ? new Date(m.EndedAt).toLocaleString() : t('deviceDetail.inProgress')}</td>
                 <td>{m.Result || '-'}</td>
                 <td>{m.Summary || '-'}</td>
               </tr>
             ))}
-            {maintenanceHistory.length === 0 && <tr><td colSpan={4}>No maintenance history yet.</td></tr>}
+            {maintenanceHistory.length === 0 && <tr><td colSpan={4}>{t('deviceDetail.noMaintenance')}</td></tr>}
           </tbody>
         </table>
       )}
@@ -368,10 +442,10 @@ export default function DeviceDetail() {
       {tab === 'audit' && (
         <table className="device-table">
           <caption style={{ textAlign: 'left', marginBottom: '0.5rem' }}>
-            Export: <a href={AuditApi.exportUrl('json', device.id)}>JSON</a>{' '}
+            {t('deviceDetail.export')}: <a href={AuditApi.exportUrl('json', device.id)}>JSON</a>{' '}
             <a href={AuditApi.exportUrl('csv', device.id)}>CSV</a>
           </caption>
-          <thead><tr><th>Time</th><th>Event</th><th>Result</th><th>Actor</th><th>IP</th></tr></thead>
+          <thead><tr><th>{t('deviceDetail.time')}</th><th>{t('deviceDetail.event')}</th><th>{t('deviceDetail.result')}</th><th>{t('deviceDetail.actor')}</th><th>{t('deviceDetail.ip')}</th></tr></thead>
           <tbody>
             {audit.map((a) => (
               <tr key={a.ID}>
@@ -382,10 +456,10 @@ export default function DeviceDetail() {
                 <td>{a.SourceIP || '-'}</td>
               </tr>
             ))}
-            {audit.length === 0 && <tr><td colSpan={5}>No audit entries yet.</td></tr>}
+            {audit.length === 0 && <tr><td colSpan={5}>{t('deviceDetail.noAudit')}</td></tr>}
           </tbody>
         </table>
       )}
-    </div>
+    </>
   )
 }

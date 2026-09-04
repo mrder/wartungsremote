@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { AlertApi, DeviceApi, CustomerApi, ApiError, type Alert, type AlertRule, type Device, type Customer, type Group } from '../api'
 import { useAuth } from '../AuthContext'
 
 const RULE_TYPES = ['offline', 'cpu', 'ram', 'disk', 'service', 'agent_version'] as const
 
 export default function Alerts() {
+  const { t } = useTranslation()
   const { user } = useAuth()
   const canManage = user?.permissions.includes('alert.manage')
 
@@ -28,7 +30,7 @@ export default function Alerts() {
     try {
       setAlerts((await AlertApi.list(stateFilter ? { state: stateFilter } : {})) ?? [])
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load alerts')
+      setError(err instanceof ApiError ? err.message : t('alerts.loadFailed'))
     }
   }
 
@@ -36,7 +38,7 @@ export default function Alerts() {
     try {
       setRules((await AlertApi.listRules()) ?? [])
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load alert rules')
+      setError(err instanceof ApiError ? err.message : t('alerts.loadRulesFailed'))
     }
   }
 
@@ -58,7 +60,7 @@ export default function Alerts() {
       await AlertApi.acknowledge(id)
       loadAlerts()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to acknowledge alert')
+      setError(err instanceof ApiError ? err.message : t('alerts.acknowledgeFailed'))
     }
   }
 
@@ -67,7 +69,7 @@ export default function Alerts() {
       await AlertApi.resolve(id)
       loadAlerts()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to resolve alert')
+      setError(err instanceof ApiError ? err.message : t('alerts.resolveFailed'))
     }
   }
 
@@ -76,7 +78,7 @@ export default function Alerts() {
       await AlertApi.delete(id)
       loadAlerts()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to delete alert')
+      setError(err instanceof ApiError ? err.message : t('alerts.deleteFailed'))
     }
   }
 
@@ -85,7 +87,7 @@ export default function Alerts() {
       await AlertApi.setRuleEnabled(id, enabled)
       loadRules()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to update rule')
+      setError(err instanceof ApiError ? err.message : t('alerts.updateRuleFailed'))
     }
   }
 
@@ -94,7 +96,7 @@ export default function Alerts() {
       await AlertApi.deleteRule(id)
       loadRules()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to delete rule')
+      setError(err instanceof ApiError ? err.message : t('alerts.deleteRuleFailed'))
     }
   }
 
@@ -117,8 +119,12 @@ export default function Alerts() {
       })
       loadRules()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to create rule')
+      setError(err instanceof ApiError ? err.message : t('alerts.createRuleFailed'))
     }
+  }
+
+  function ruleTypeLabel(rt: string) {
+    return t(`alerts.ruleType.${rt}`, { defaultValue: rt })
   }
 
   function ruleSummary(r: AlertRule) {
@@ -127,38 +133,38 @@ export default function Alerts() {
       case 'cpu': return `CPU >= ${cfg.threshold_percent}%`
       case 'ram': return `RAM >= ${cfg.threshold_percent}%`
       case 'disk': return `Disk >= ${cfg.threshold_percent}%`
-      case 'service': return `Service "${cfg.service_name}" not running`
-      case 'agent_version': return `Agent older than ${cfg.minimum_version}`
-      case 'offline': return 'Device offline'
+      case 'service': return t('alerts.serviceNotRunning', { name: cfg.service_name })
+      case 'agent_version': return t('alerts.agentOlderThan', { version: cfg.minimum_version })
+      case 'offline': return t('alerts.deviceOffline')
       default: return r.RuleType
     }
   }
 
   function scopeLabel(r: AlertRule) {
-    if (r.ScopeType === 'global') return 'All devices'
+    if (r.ScopeType === 'global') return t('alerts.allDevices')
     if (r.ScopeType === 'device') return deviceName(r.ScopeID ?? '')
-    if (r.ScopeType === 'customer') return 'Customer: ' + (customers.find((c) => c.ID === r.ScopeID)?.Name ?? r.ScopeID)
-    if (r.ScopeType === 'group') return 'Group: ' + (groups.find((g) => g.ID === r.ScopeID)?.Name ?? r.ScopeID)
+    if (r.ScopeType === 'customer') return t('customers.title') + ': ' + (customers.find((c) => c.ID === r.ScopeID)?.Name ?? r.ScopeID)
+    if (r.ScopeType === 'group') return t('customers.groups') + ': ' + (groups.find((g) => g.ID === r.ScopeID)?.Name ?? r.ScopeID)
     return r.ScopeType
   }
 
   return (
-    <div className="page">
-      <Link to="/">&larr; Back to devices</Link>
-      <h1>Alerts</h1>
+    <>
+      <h1>{t('alerts.title')}</h1>
+      <p>{t('alerts.intro')}</p>
       {error && <p className="error">{error}</p>}
 
-      <h3>Open / recent alerts</h3>
+      <h3>{t('alerts.openRecent')}</h3>
       <div className="toolbar">
         <select value={stateFilter} onChange={(e) => setStateFilter(e.target.value)}>
-          <option value="">All states</option>
-          <option value="open">Open</option>
-          <option value="acknowledged">Acknowledged</option>
-          <option value="resolved">Resolved</option>
+          <option value="">{t('alerts.allStates')}</option>
+          <option value="open">{t('alerts.open')}</option>
+          <option value="acknowledged">{t('alerts.acknowledged')}</option>
+          <option value="resolved">{t('alerts.resolved')}</option>
         </select>
       </div>
       <table className="device-table">
-        <thead><tr><th>Device</th><th>Severity</th><th>State</th><th>Summary</th><th>Opened</th><th></th></tr></thead>
+        <thead><tr><th>{t('alerts.device')}</th><th>{t('alerts.severity')}</th><th>{t('alerts.state')}</th><th>{t('alerts.summary')}</th><th>{t('alerts.opened')}</th><th></th></tr></thead>
         <tbody>
           {alerts.map((a) => (
             <tr key={a.ID}>
@@ -168,81 +174,106 @@ export default function Alerts() {
               <td>{a.Summary}</td>
               <td>{new Date(a.OpenedAt).toLocaleString()}</td>
               <td>
-                {canManage && a.State === 'open' && <button onClick={() => acknowledge(a.ID)}>Acknowledge</button>}
-                {canManage && a.State !== 'resolved' && <button onClick={() => resolve(a.ID)}>Resolve</button>}
-                {canManage && <button onClick={() => deleteAlert(a.ID)}>Delete</button>}
+                {canManage && a.State === 'open' && <button onClick={() => acknowledge(a.ID)}>{t('alerts.acknowledge')}</button>}
+                {canManage && a.State !== 'resolved' && <button onClick={() => resolve(a.ID)}>{t('alerts.resolve')}</button>}
+                {canManage && <button onClick={() => deleteAlert(a.ID)}>{t('common.delete')}</button>}
               </td>
             </tr>
           ))}
-          {alerts.length === 0 && <tr><td colSpan={6}>No alerts.</td></tr>}
+          {alerts.length === 0 && <tr><td colSpan={6}>{t('alerts.noAlerts')}</td></tr>}
         </tbody>
       </table>
 
-      <h3>Alert rules</h3>
+      <h3>{t('alerts.alertRules')}</h3>
+      <p>{t('alerts.rulesHint')}</p>
       <table className="device-table">
-        <thead><tr><th>Type</th><th>Condition</th><th>Scope</th><th>Enabled</th><th></th></tr></thead>
+        <thead><tr><th>{t('deviceList.type')}</th><th>{t('alerts.condition')}</th><th>{t('alerts.scope')}</th><th>{t('alerts.enabled')}</th><th></th></tr></thead>
         <tbody>
           {rules.map((r) => (
             <tr key={r.ID}>
-              <td>{r.RuleType}</td>
+              <td>{ruleTypeLabel(r.RuleType)}</td>
               <td>{ruleSummary(r)}</td>
               <td>{scopeLabel(r)}</td>
-              <td>{r.Enabled ? 'yes' : 'no'}</td>
+              <td>{r.Enabled ? t('common.yes') : t('common.no')}</td>
               <td>
                 {canManage && (
                   <>
-                    <button onClick={() => toggleRule(r.ID, !r.Enabled)}>{r.Enabled ? 'Disable' : 'Enable'}</button>
-                    <button onClick={() => deleteRule(r.ID)}>Delete</button>
+                    <button onClick={() => toggleRule(r.ID, !r.Enabled)}>{r.Enabled ? t('alerts.disable') : t('alerts.enable')}</button>
+                    <button onClick={() => deleteRule(r.ID)}>{t('common.delete')}</button>
                   </>
                 )}
               </td>
             </tr>
           ))}
-          {rules.length === 0 && <tr><td colSpan={5}>No alert rules configured yet.</td></tr>}
+          {rules.length === 0 && <tr><td colSpan={5}>{t('alerts.noRules')}</td></tr>}
         </tbody>
       </table>
 
       {canManage && (
-        <form onSubmit={createRule} className="toolbar" style={{ flexWrap: 'wrap' }}>
-          <select value={ruleType} onChange={(e) => setRuleType(e.target.value as typeof ruleType)}>
-            {RULE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
+        <form onSubmit={createRule} className="field-form">
+          <label>
+            {t('alerts.condition')}
+            <select value={ruleType} onChange={(e) => setRuleType(e.target.value as typeof ruleType)}>
+              {RULE_TYPES.map((rt) => <option key={rt} value={rt}>{ruleTypeLabel(rt)}</option>)}
+            </select>
+          </label>
           {(ruleType === 'cpu' || ruleType === 'ram' || ruleType === 'disk') && (
-            <input type="number" placeholder="Threshold %" value={threshold} onChange={(e) => setThreshold(e.target.value)} required />
+            <label>
+              {t('alerts.thresholdPercent')}
+              <input type="number" value={threshold} onChange={(e) => setThreshold(e.target.value)} required style={{ width: '6rem' }} />
+            </label>
           )}
           {ruleType === 'service' && (
-            <input placeholder="Service name" value={serviceName} onChange={(e) => setServiceName(e.target.value)} required />
+            <label>
+              {t('alerts.serviceName')}
+              <input value={serviceName} onChange={(e) => setServiceName(e.target.value)} required />
+            </label>
           )}
           {ruleType === 'agent_version' && (
-            <input placeholder="Minimum version (e.g. 0.2.0)" value={minVersion} onChange={(e) => setMinVersion(e.target.value)} required />
+            <label>
+              {t('alerts.minimumVersion')}
+              <input value={minVersion} onChange={(e) => setMinVersion(e.target.value)} required />
+            </label>
           )}
-          <select value={scopeType} onChange={(e) => { setScopeType(e.target.value); setScopeID('') }}>
-            <option value="global">All devices</option>
-            <option value="customer">Customer</option>
-            <option value="group">Group</option>
-            <option value="device">Device</option>
-          </select>
-          {scopeType === 'customer' && (
-            <select value={scopeID} onChange={(e) => setScopeID(e.target.value)} required>
-              <option value="">- select customer -</option>
-              {customers.map((c) => <option key={c.ID} value={c.ID}>{c.Name}</option>)}
+          <label>
+            {t('alerts.scope')}
+            <select value={scopeType} onChange={(e) => { setScopeType(e.target.value); setScopeID('') }}>
+              <option value="global">{t('alerts.allDevices')}</option>
+              <option value="customer">{t('customers.title')}</option>
+              <option value="group">{t('customers.groups')}</option>
+              <option value="device">{t('alerts.device')}</option>
             </select>
+          </label>
+          {scopeType === 'customer' && (
+            <label>
+              {t('customers.title')}
+              <select value={scopeID} onChange={(e) => setScopeID(e.target.value)} required>
+                <option value="">{t('alerts.selectCustomer')}</option>
+                {customers.map((c) => <option key={c.ID} value={c.ID}>{c.Name}</option>)}
+              </select>
+            </label>
           )}
           {scopeType === 'group' && (
-            <select value={scopeID} onChange={(e) => setScopeID(e.target.value)} required>
-              <option value="">- select group -</option>
-              {groups.map((g) => <option key={g.ID} value={g.ID}>{g.Name}</option>)}
-            </select>
+            <label>
+              {t('customers.groups')}
+              <select value={scopeID} onChange={(e) => setScopeID(e.target.value)} required>
+                <option value="">{t('alerts.selectGroup')}</option>
+                {groups.map((g) => <option key={g.ID} value={g.ID}>{g.Name}</option>)}
+              </select>
+            </label>
           )}
           {scopeType === 'device' && (
-            <select value={scopeID} onChange={(e) => setScopeID(e.target.value)} required>
-              <option value="">- select device -</option>
-              {devices.map((d) => <option key={d.id} value={d.id}>{d.display_name}</option>)}
-            </select>
+            <label>
+              {t('alerts.device')}
+              <select value={scopeID} onChange={(e) => setScopeID(e.target.value)} required>
+                <option value="">{t('alerts.selectDevice')}</option>
+                {devices.map((d) => <option key={d.id} value={d.id}>{d.display_name}</option>)}
+              </select>
+            </label>
           )}
-          <button type="submit">+ Add rule</button>
+          <button type="submit">{t('alerts.addRule')}</button>
         </form>
       )}
-    </div>
+    </>
   )
 }

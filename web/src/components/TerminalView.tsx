@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export default function TerminalView({ deviceId }: Props) {
+  const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState('')
   const [connecting, setConnecting] = useState(false)
@@ -32,16 +34,16 @@ export default function TerminalView({ deviceId }: Props) {
   async function requestPrivilege() {
     const sessionId = sessionIdRef.current
     if (!sessionId) return
-    const password = prompt('Re-enter your password to request elevated rights:')
+    const password = prompt(t('terminalView.promptPassword'))
     if (!password) return
-    const code = prompt('Enter your current 6-digit authenticator code:')
+    const code = prompt(t('terminalView.promptCode'))
     if (!code) return
     try {
       const reauth = await ReauthApi.reauth(password, code)
       const grant = await SessionApi.grantPrivilege(sessionId, reauth.reauth_id, 15 * 60)
       setPrivilegeUntil(new Date(grant.valid_until))
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to elevate privileges')
+      setError(err instanceof ApiError ? err.message : t('terminalView.elevateFailed'))
     }
   }
 
@@ -89,9 +91,9 @@ export default function TerminalView({ deviceId }: Props) {
       }
       ws.onclose = () => {
         setConnected(false)
-        term.write('\r\n\x1b[33m[session closed]\x1b[0m\r\n')
+        term.write(`\r\n\x1b[33m[${t('terminalView.sessionClosed')}]\x1b[0m\r\n`)
       }
-      ws.onerror = () => setError('Connection error')
+      ws.onerror = () => setError(t('terminalView.connectionError'))
 
       term.onData((data) => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -108,7 +110,7 @@ export default function TerminalView({ deviceId }: Props) {
       resizeObserver.observe(containerRef.current)
     } catch (err) {
       setConnecting(false)
-      setError(err instanceof ApiError ? err.message : 'Failed to open terminal session')
+      setError(err instanceof ApiError ? err.message : t('terminalView.openFailed'))
     }
   }
 
@@ -127,21 +129,23 @@ export default function TerminalView({ deviceId }: Props) {
 
   return (
     <div className="terminal-panel">
+      <h3>{t('terminalView.title')}</h3>
+      <p>{t('terminalView.hint')}</p>
       {!connected && !connecting && (
-        <button onClick={connect}>Open Terminal</button>
+        <button onClick={connect}>{t('terminalView.openTerminal')}</button>
       )}
-      {connecting && <p>Connecting...</p>}
+      {connecting && <p>{t('terminalView.connecting')}</p>}
       {error && <p className="error">{error}</p>}
       {connected && (
         <>
-          <button onClick={disconnect}>Close Session</button>{' '}
+          <button onClick={disconnect}>{t('terminalView.closeSession')}</button>{' '}
           {privilegeUntil ? (
             <>
-              <span className="badge badge-yellow">privileged: {remainingSec}s</span>{' '}
-              <button onClick={revokePrivilege}>Revoke</button>
+              <span className="badge badge-yellow">{t('terminalView.privileged', { seconds: remainingSec })}</span>{' '}
+              <button onClick={revokePrivilege}>{t('common.revoke')}</button>
             </>
           ) : (
-            <button onClick={requestPrivilege}>Request Admin Rights</button>
+            <button onClick={requestPrivilege}>{t('terminalView.requestAdminRights')}</button>
           )}
         </>
       )}
