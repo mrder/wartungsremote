@@ -50,8 +50,20 @@ for f in server.yaml .env; do
 done
 [[ -d "$COMPOSE_DIR/secrets" ]] && cp -r "$COMPOSE_DIR/secrets" "$WORKDIR/config/secrets"
 
+# A human-readable record of when/what/where this backup is from, inside
+# the archive itself — the filename's timestamp is lost the moment someone
+# renames or copies the file elsewhere, this isn't.
+cat > "$WORKDIR/MANIFEST.txt" <<MANIFEST
+WartungsRemote backup
+created_at:   $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+timestamp_id: $TIMESTAMP
+deployment:   docker compose
+hostname:     $(hostname)
+compose_dir:  $COMPOSE_DIR
+MANIFEST
+
 ARCHIVE="$BACKUP_DIR/wartungsremote-backup-$TIMESTAMP.tar.gz"
-tar -czf "$ARCHIVE" -C "$WORKDIR" database.sql.gz config
+tar -czf "$ARCHIVE" -C "$WORKDIR" database.sql.gz config MANIFEST.txt
 
 if [[ -n "$ENCRYPT_PASSPHRASE_FILE" ]]; then
   if [[ ! -f "$ENCRYPT_PASSPHRASE_FILE" ]]; then

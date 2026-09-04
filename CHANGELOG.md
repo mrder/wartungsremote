@@ -5,6 +5,14 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added: self-describing backup archives
+
+- Both `scripts/backup-server.sh` and `scripts/backup-server-native.sh`
+  now include a `MANIFEST.txt` inside the archive itself (creation
+  time, hostname, deployment type, source directory) — the filename's
+  timestamp is the only record of "when" once a backup file gets
+  renamed or copied elsewhere; this isn't.
+
 ## [0.2.0] - 2026-09-04
 
 ### Added: multi-language dashboard (German/English)

@@ -50,8 +50,20 @@ mkdir -p "$WORKDIR/config"
 [[ -f "$APP_DIR/server.yaml" ]] && cp "$APP_DIR/server.yaml" "$WORKDIR/config/"
 [[ -d "$APP_DIR/secrets" ]] && cp -r "$APP_DIR/secrets" "$WORKDIR/config/secrets"
 
+# A human-readable record of when/what/where this backup is from, inside
+# the archive itself — the filename's timestamp is lost the moment someone
+# renames or copies the file elsewhere, this isn't.
+cat > "$WORKDIR/MANIFEST.txt" <<MANIFEST
+WartungsRemote backup
+created_at:   $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+timestamp_id: $TIMESTAMP
+deployment:   native (non-Docker)
+hostname:     $(hostname)
+app_dir:      $APP_DIR
+MANIFEST
+
 ARCHIVE="$BACKUP_DIR/wartungsremote-backup-$TIMESTAMP.tar.gz"
-tar -czf "$ARCHIVE" -C "$WORKDIR" database.sql.gz config
+tar -czf "$ARCHIVE" -C "$WORKDIR" database.sql.gz config MANIFEST.txt
 
 if [[ -n "$ENCRYPT_PASSPHRASE_FILE" ]]; then
   if [[ ! -f "$ENCRYPT_PASSPHRASE_FILE" ]]; then
