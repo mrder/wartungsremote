@@ -17,6 +17,9 @@
     "autoLogoutIn": "Automatische Abmeldung in {{time}}",
     "inactivityLogoutHint": "Du wirst nach 15 Minuten ohne Aktivität in diesem Tab automatisch abgemeldet."
   },
+  "footer": {
+    "version": "v{{version}}"
+  },
   "nav": {
     "customers": "Kunden",
     "networkUsage": "Netzwerknutzung",

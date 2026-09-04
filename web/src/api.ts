@@ -66,6 +66,7 @@ export interface Me {
   mfa_confirmed: boolean
   session_expires_at: string
   public_base_url: string
+  server_version: string
   advisories?: Advisory[]
 }
 

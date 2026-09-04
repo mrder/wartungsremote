@@ -17,6 +17,9 @@
     "autoLogoutIn": "Auto-logout in {{time}}",
     "inactivityLogoutHint": "You'll be logged out automatically after 15 minutes without any activity in this tab."
   },
+  "footer": {
+    "version": "v{{version}}"
+  },
   "nav": {
     "customers": "Customers",
     "networkUsage": "Network usage",

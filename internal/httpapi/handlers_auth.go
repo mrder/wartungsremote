@@ -260,5 +260,6 @@ func (h *handlers) handleMe(w http.ResponseWriter, r *http.Request) {
 		// command for SSH/RDP tunnels (docs/RELAY.md §5) — not a secret.
 		"public_base_url": h.cfg.Public.BaseURL,
 		"advisories":      advisories,
+		"server_version":  h.version,
 	}, nil)
 }

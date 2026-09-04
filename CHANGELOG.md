@@ -5,6 +5,12 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added: running server version shown in the dashboard footer
+
+- `GET /api/v1/me` now includes `server_version`; the footer shows it
+  (once logged in) so an admin can tell at a glance which build is
+  actually running and notice when an update landed.
+
 ### Fixed: deterrent page's contact link was hardcoded to one deployment's domain
 
 - The public listener's catch-all 403 page (shown to anyone who opens the

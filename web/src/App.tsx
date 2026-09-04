@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { AuthProvider, useAuth } from './AuthContext'
 import Login from './pages/Login'
 import DeviceList from './pages/DeviceList'
@@ -41,9 +42,17 @@ function AppRoutes() {
 
 function Footer() {
   const year = new Date().getFullYear()
+  const { user } = useAuth()
+  const { t } = useTranslation()
   return (
     <footer className="app-footer">
       <span>&copy; {year} WartungsRemote</span>
+      {user?.server_version && (
+        <>
+          <span className="app-footer-sep">&middot;</span>
+          <span>{t('footer.version', { version: user.server_version })}</span>
+        </>
+      )}
       <span className="app-footer-sep">&middot;</span>
       <span>
         Powered by <a href="https://sonnyathome.online" target="_blank" rel="noopener noreferrer">sonnyathome.online</a>
