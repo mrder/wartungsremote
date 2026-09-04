@@ -10,8 +10,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -230,7 +232,7 @@ func NewRouter(deps Dependencies) (*Router, error) {
 	// uninformative response instead of a Go default 404 (which at least
 	// confirms "something is listening and routing paths here"). No
 	// branding, no version, no hint this is WartungsRemote.
-	public.HandleFunc("/", handleDeterrent)
+	public.HandleFunc("/", h.handleDeterrent)
 	// wr-helper is a native binary with no browser session; it authenticates
 	// with a single-use ticket instead, so this lives on the public listener
 	// rather than the session-cookie-protected admin one. See docs/RELAY.md.
@@ -379,7 +381,7 @@ const deterrentCSS = `
   a:hover { text-decoration:underline; }
 `
 
-var deterrentHTML = `<!DOCTYPE html>
+const deterrentHTMLTemplate = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -390,7 +392,7 @@ var deterrentHTML = `<!DOCTYPE html>
   <div class="box">
     <h1>Looks like you took a wrong turn.</h1>
     <p>There's nothing to see at this address.</p>
-    <p>Questions? <a href="https://web.sonnyathome.online">sonnyathome.online</a></p>
+    %s
   </div>
 </body>
 </html>`
@@ -400,12 +402,28 @@ var deterrentCSPStyleHash = func() string {
 	return "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
 }()
 
-func handleDeterrent(w http.ResponseWriter, r *http.Request) {
+// handleDeterrent serves docs/AGENT.md's "no branding, no version, no hint
+// this is WartungsRemote" 403 for anything on the public listener outside
+// its actual routes. The optional contact link is deliberately driven by
+// config (public.deterrent_contact_url) rather than hardcoded — this source
+// is shared across every deployment of this software, and a hardcoded URL
+// would point every one of them at whichever operator's dashboard first
+// wrote it in.
+func (h *handlers) handleDeterrent(w http.ResponseWriter, r *http.Request) {
+	contact := "<p>There's nothing to see at this address.</p>"
+	if u := h.cfg.Public.DeterrentContactURL; u != "" {
+		escaped := template.HTMLEscapeString(u)
+		contact = fmt.Sprintf(`<p>Questions? <a href="%s">%s</a></p>`, escaped, escaped)
+	}
+	// Not fmt.Sprintf: deterrentCSS contains literal '%' characters (e.g.
+	// "100%") that fmt would misparse as format verbs.
+	body := strings.Replace(deterrentHTMLTemplate, "%s", contact, 1)
+
 	// Overrides the blanket CSP the security-headers middleware already set
 	// on this response — Header.Set replaces rather than appends, and
 	// headers aren't finalized until WriteHeader, so this still wins.
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src "+deterrentCSPStyleHash+"; frame-ancestors 'none'; base-uri 'none'")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusForbidden)
-	_, _ = w.Write([]byte(deterrentHTML))
+	_, _ = w.Write([]byte(body))
 }

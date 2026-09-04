@@ -10,6 +10,7 @@ mode: production
 public:
   base_url: https://remote.example.de
   listen: 0.0.0.0:8080
+  deterrent_contact_url: ""   # optional, siehe unten
 
 admin:
   listen: 127.0.0.1:9443
@@ -50,6 +51,16 @@ metrics:
 help:
   content_dir: /app/docs
 ```
+
+`public.deterrent_contact_url` ist standardmäßig leer. Der öffentliche
+(agent-seitige) Listener antwortet auf allem außerhalb seiner echten API-Routen
+(z. B. jemand öffnet die reine Hostname-URL im Browser, oder ein Scanner)
+absichtlich nur mit einer nichtssagenden 403-Seite ohne Produktname, Version
+oder sonstige Hinweise. Ist `deterrent_contact_url` gesetzt, zeigt diese Seite
+zusätzlich einen Kontakt-Link (z. B. auf das eigene Dashboard) an. Bewusst
+nicht fest im Quellcode verdrahtet, da dieser Code für jedes Deployment
+gleich ist — eine hartkodierte URL würde bei jedem Fremd-Deployment auf das
+falsche Dashboard zeigen.
 
 `security.trusted_proxies` ist standardmäßig leer — dann wird `X-Forwarded-For`
 grundsätzlich ignoriert und immer die rohe TCP-Peer-Adresse als Client-IP

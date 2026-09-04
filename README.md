@@ -50,7 +50,12 @@ Server starts
   -> Audit export (JSON/CSV), dashboard help (rendered + sanitized from
      docs/DASHBOARD_HELP.md), rate limiting on the remaining public endpoints
   -> Customer management + automatic maintenance history
-  -> Web dashboard (device list/detail, all of the above, audit)
+  -> Web dashboard (device list/detail, all of the above, audit), switchable
+     German/English UI, 6 selectable themes + 2 layouts (persisted locally)
+  -> Automatic GitHub release import for agent updates (signature-verified
+     the same way as manual publishing; GitHub is only ever a transport)
+  -> Graphical Windows installer (self-contained .exe, UAC elevation) as an
+     alternative to the one-line PowerShell install command
   -> Audit log (append-only)
 ```
 
@@ -208,6 +213,12 @@ Both installers set up the documented config/data/log directories from
 after successful enrollment), and register the agent as a proper system
 service — visibly, with no hidden functionality (`docs/PROJECT_CONCEPT.md`
 §36).
+
+A graphical alternative to the PowerShell installer is also available for
+Windows: `deployment/windows/installer/build-installer.ps1` produces a
+self-contained `WartungsRemoteAgentSetup.exe` with a small wizard (server
+URL + enrollment token fields, automatic UAC elevation) — useful when
+handing off installation to someone who'd rather not run a script.
 
 Shortly after first connecting, the agent also provisions a dedicated
 local account (`remotewartung`) for logging into the SSH/RDP tunnel —

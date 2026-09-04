@@ -22,6 +22,12 @@ type ServerConfig struct {
 	Public struct {
 		BaseURL string `yaml:"base_url"`
 		Listen  string `yaml:"listen"`
+		// DeterrentContactURL, if set, is shown as a link on the public
+		// listener's deterrent page (someone opening the bare hostname by
+		// mistake). Empty by default — deliberately not hardcoded to any
+		// one deployment's own dashboard URL, since that would be wrong
+		// for every other deployment of this same source.
+		DeterrentContactURL string `yaml:"deterrent_contact_url"`
 	} `yaml:"public"`
 
 	Admin struct {

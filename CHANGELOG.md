@@ -5,6 +5,16 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed: deterrent page's contact link was hardcoded to one deployment's domain
+
+- The public listener's catch-all 403 page (shown to anyone who opens the
+  bare hostname or a scanner probing random paths) had this project's own
+  dashboard URL baked into the source. Since that source is shared across
+  every deployment, anyone else self-hosting this software would have
+  shown *this* project's link on *their* deterrent page. Moved it to an
+  optional `public.deterrent_contact_url` config field (see
+  `docs/CONFIGURATION.md`) — empty by default, no link shown unless set.
+
 ### Fixed: success confirmations blending into surrounding text
 
 - "Saved.", "Password changed.", and similar confirmations across the
