@@ -34,6 +34,7 @@ export default function DeviceDetail() {
   const [requesting, setRequesting] = useState(false)
   const [updateBusy, setUpdateBusy] = useState(false)
   const [updateMsg, setUpdateMsg] = useState('')
+  const [updateOk, setUpdateOk] = useState(false)
   const [updateChannel, setUpdateChannel] = useState<'stable' | 'beta'>('stable')
   const [dangerAction, setDangerAction] = useState<'revoke' | 'delete' | null>(null)
   const [dangerPassword, setDangerPassword] = useState('')
@@ -109,9 +110,11 @@ export default function DeviceDetail() {
     if (!id) return
     setUpdateBusy(true)
     setUpdateMsg('')
+    setUpdateOk(false)
     try {
       const res = await ReleaseApi.triggerUpdate(id, updateChannel)
       setUpdateMsg(t('deviceDetail.updateTriggered', { version: res.target_version }))
+      setUpdateOk(true)
     } catch (err) {
       setUpdateMsg(err instanceof ApiError ? err.message : t('deviceDetail.updateFailed'))
     } finally {
@@ -206,7 +209,7 @@ export default function DeviceDetail() {
                     </button>
                   </>
                 )}
-                {updateMsg && <span style={{ marginLeft: '0.5rem' }}>{updateMsg}</span>}
+                {updateMsg && <span style={{ marginLeft: '0.5rem', color: updateOk ? 'var(--green)' : 'var(--red)' }}>{updateMsg}</span>}
               </td>
             </tr>
             <tr><td>{t('deviceDetail.installId')}</td><td><code>{device.install_id}</code></td></tr>

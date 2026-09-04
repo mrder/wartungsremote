@@ -79,7 +79,7 @@ export default function Users() {
       <h1>{t('users.title')}</h1>
       <p>{t('users.intro')}</p>
       {error && <p className="error">{error}</p>}
-      {msg && <p>{msg}</p>}
+      {msg && <p className="success">{msg}</p>}
 
       {createdUser && (
         <div className="enrollment-panel">

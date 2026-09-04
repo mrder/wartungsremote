@@ -58,7 +58,7 @@ export default function SupportCredentialPanel({ deviceId }: Props) {
       <h3>{t('supportCredential.title')}</h3>
       <p>{t('supportCredential.hint')}</p>
       {error && <p className="error">{error}</p>}
-      {rotateMsg && <p>{rotateMsg}</p>}
+      {rotateMsg && <p className="success">{rotateMsg}</p>}
       {!credential ? (
         <div className="toolbar">
           <button disabled={busy} onClick={reveal}>{t('supportCredential.revealPassword')}</button>

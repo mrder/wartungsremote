@@ -33,6 +33,7 @@ export default function Settings() {
   const [chatId, setChatId] = useState('')
   const [telegramSaved, setTelegramSaved] = useState(false)
   const [telegramTestMsg, setTelegramTestMsg] = useState('')
+  const [telegramTestOk, setTelegramTestOk] = useState(false)
   const [telegramBusy, setTelegramBusy] = useState(false)
 
   const [chainResult, setChainResult] = useState<ChainVerification | null>(null)
@@ -169,10 +170,12 @@ export default function Settings() {
   async function testTelegram() {
     setError('')
     setTelegramTestMsg('')
+    setTelegramTestOk(false)
     setTelegramBusy(true)
     try {
       await SettingsApi.testTelegram()
       setTelegramTestMsg(t('settings.telegram.testSent'))
+      setTelegramTestOk(true)
     } catch (err) {
       setTelegramTestMsg(err instanceof ApiError ? err.message : t('settings.telegram.testFailed'))
     } finally {
@@ -190,7 +193,7 @@ export default function Settings() {
         <h3>{t('account.changePassword')}</h3>
         <p>{t('account.changePasswordHint')}</p>
         {accountError && <p className="error">{accountError}</p>}
-        {passwordChanged && <p>{t('account.passwordChanged')}</p>}
+        {passwordChanged && <p className="success">{t('account.passwordChanged')}</p>}
         <form onSubmit={changePassword} className="field-form">
           <label>
             {t('account.currentPassword')}
@@ -266,7 +269,7 @@ export default function Settings() {
         <h3>{t('settings.retention.title')}</h3>
         <p>{t('settings.retention.hint')}</p>
         {error && <p className="error">{error}</p>}
-        {saved && <p>{t('common.saved')}</p>}
+        {saved && <p className="success">{t('common.saved')}</p>}
         <form onSubmit={save} className="field-form">
         <label>
           {t('settings.retention.rawHours')}:{' '}
@@ -301,7 +304,7 @@ export default function Settings() {
 
         <h3>{t('settings.networkRetention.title')}</h3>
         <p>{t('settings.networkRetention.hint')}</p>
-      {networkSaved && <p>{t('common.saved')}</p>}
+      {networkSaved && <p className="success">{t('common.saved')}</p>}
       <form onSubmit={saveNetworkRetention} className="field-form">
         <label>
           {t('settings.retention.rawHours')}:{' '}
@@ -339,7 +342,7 @@ export default function Settings() {
       <h2>{t('settings.group.security')}</h2>
       <h3>{t('settings.rotation.title')}</h3>
       <p>{t('settings.rotation.hint')}</p>
-      {rotationSaved && <p>{t('common.saved')}</p>}
+      {rotationSaved && <p className="success">{t('common.saved')}</p>}
       <form onSubmit={saveRotation} className="field-form">
         <label>
           {t('settings.rotation.rotateEvery')}:{' '}
@@ -367,7 +370,7 @@ export default function Settings() {
           </div>
           {chainResult && (
             chainResult.Valid ? (
-              <p>
+              <p className="success">
                 {t('settings.audit.chainIntact', { count: chainResult.EntriesCheck })}
                 {chainResult.EntriesPreChain > 0 &&
                   ' ' + t('settings.audit.preChainNote', { count: chainResult.EntriesPreChain })}
@@ -397,8 +400,8 @@ export default function Settings() {
           {t('settings.telegram.currentlyConfigured', { chatId, updatedAt: telegramUpdatedAt ? new Date(telegramUpdatedAt).toLocaleString() : '-' })}
         </p>
       )}
-      {telegramSaved && <p>{t('common.saved')}</p>}
-      {telegramTestMsg && <p>{telegramTestMsg}</p>}
+      {telegramSaved && <p className="success">{t('common.saved')}</p>}
+      {telegramTestMsg && <p className={telegramTestOk ? 'success' : 'error'}>{telegramTestMsg}</p>}
       <form onSubmit={saveTelegram} className="field-form">
         <input
           type="password"

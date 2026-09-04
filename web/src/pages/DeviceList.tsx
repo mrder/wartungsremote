@@ -149,7 +149,7 @@ export default function DeviceList() {
           <button onClick={revokeAllEnrollments}>{t('deviceList.revokeAllTokens')}</button>
         )}
       </div>
-      {revokeMsg && <p>{revokeMsg}</p>}
+      {revokeMsg && <p className="success">{revokeMsg}</p>}
 
       {showOutstanding && (
         <table className="device-table">

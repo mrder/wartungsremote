@@ -5,6 +5,15 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed: success confirmations blending into surrounding text
+
+- "Saved.", "Password changed.", and similar confirmations across the
+  dashboard were plain text easy to miss right next to explanatory
+  paragraphs. Added a `.success` style (green box, matching the
+  existing `.error` treatment) and applied it everywhere a
+  success-only message renders; also made `.error`'s own tint
+  theme-aware instead of a color hardcoded to the dark theme.
+
 ### Added: self-describing backup archives
 
 - Both `scripts/backup-server.sh` and `scripts/backup-server-native.sh`
